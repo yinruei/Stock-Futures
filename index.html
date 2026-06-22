@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>佛系交易實驗室 - 股票期貨提領模擬器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, '微軟正黑體', sans-serif; }
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        
+        <!-- 標題區塊 -->
+        <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-orange-500">
+            <h1 class="text-2xl font-bold text-gray-900">📈 股票期貨實戰提領模擬器</h1>
+            <p class="text-gray-500 mt-2">模擬「整數口數限制」與「動態提利」的真實市場資金演變。</p>
+        </div>
+
+        <!-- 參數輸入區塊 -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h2 class="text-lg font-semibold mb-4 border-b pb-2">⚙️ 策略參數設定</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="input-form">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">初始資金 (NT$)</label>
+                    <input type="number" id="initialCapital" value="300000" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-orange-300 outline-none transition" oninput="calculate()">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">標的現股價格</label>
+                    <input type="number" id="stockPrice" value="819" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-orange-300 outline-none transition" oninput="calculate()">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">契約規格 (股)</label>
+                    <select id="contractSize" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-orange-300 outline-none transition" onchange="calculate()">
+                        <option value="100">小型 (100股)</option>
+                        <option value="2000">標準 (2000股)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">期貨保證金級距 (%)</label>
+                    <select id="marginTier" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-orange-300 outline-none transition" onchange="calculate()">
+                        <option value="13.5">級距一 (13.5%)</option>
+                        <option value="16.2">級距二 (16.2%)</option>
+                        <option value="20.25">級距三 (20.25%)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">帳戶保證金倍數 (防禦力)</label>
+                    <input type="number" id="marginMultiple" value="3" step="0.1" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-orange-300 outline-none transition" oninput="calculate()">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">單次現股上漲目標 (%)</label>
+                    <input type="number" id="upwardTarget" value="10" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-orange-300 outline-none transition" oninput="calculate()">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">獲利提領比例 (%)</label>
+                    <input type="number" id="withdrawalRate" value="10" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-orange-300 outline-none transition" oninput="calculate()">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">模擬交易次數</label>
+                    <input type="number" id="tradeCount" value="12" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-orange-300 outline-none transition" oninput="calculate()">
+                </div>
+            </div>
+        </div>
+
+        <!-- 🚨 資金不足警告標語 (預設隱藏) -->
+        <div id="warningMessage" class="hidden bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm animate-pulse">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <span class="text-red-500 text-2xl">⚠️</span>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-lg font-bold text-red-800">委託失敗：初始資金不足以購買任何一口合約！</h3>
+                    <p class="text-sm text-red-700 mt-1" id="warningDetail">
+                        <!-- JS 動態寫入詳細短語 -->
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 核心數據卡片 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-blue-50 border-l-4 border-blue-500 rounded-xl p-6 shadow-sm">
+                <div class="text-blue-600 text-sm font-bold mb-1">🏦 累計入袋現金 (無風險)</div>
+                <div class="text-3xl font-black text-gray-800" id="resCash">0</div>
+            </div>
+            <div class="bg-green-50 border-l-4 border-green-500 rounded-xl p-6 shadow-sm">
+                <div class="text-green-600 text-sm font-bold mb-1">📈 期末帳戶餘額 (市場資金)</div>
+                <div class="text-3xl font-black text-gray-800" id="resAccount">0</div>
+            </div>
+            <div class="bg-orange-50 border-l-4 border-orange-500 rounded-xl p-6 shadow-sm">
+                <div class="text-orange-600 text-sm font-bold mb-1">💰 最終總資產 (總淨值)</div>
+                <div class="text-3xl font-black text-orange-600" id="resTotal">0</div>
+            </div>
+        </div>
+
+        <!-- 圖表區塊 -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h2 class="text-lg font-semibold mb-4 border-b pb-2">📊 資金成長堆疊圖</h2>
+            <div class="relative h-80 w-full">
+                <canvas id="growthChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 詳細數據表格 -->
+        <div class="bg-white rounded-xl shadow-md p-6 overflow-hidden">
+            <h2 class="text-lg font-semibold mb-4 border-b pb-2">📝 逐次交易明細</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-right text-sm">
+                    <thead class="bg-gray-50 text-gray-600">
+                        <tr>
+                            <th class="p-3 text-center">期數</th>
+                            <th class="p-3">期初資金</th>
+                            <th class="p-3">購入口數</th>
+                            <th class="p-3">單次總獲利</th>
+                            <th class="p-3 text-blue-600">提領現金</th>
+                            <th class="p-3 text-green-600">期末帳戶餘額</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-gray-100">
+                        <!-- JS 動態生成 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let myChart = null;
+
+        function formatCurrency(num) {
+            return Math.floor(num).toLocaleString('en-US');
+        }
+
+        function calculate() {
+            // 取得輸入參數
+            const initialCapital = parseFloat(document.getElementById('initialCapital').value) || 0;
+            const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
+            const contractSize = parseFloat(document.getElementById('contractSize').value) || 0;
+            const marginTier = parseFloat(document.getElementById('marginTier').value) / 100 || 0;
+            const marginMultiple = parseFloat(document.getElementById('marginMultiple').value) || 0;
+            const upwardTarget = parseFloat(document.getElementById('upwardTarget').value) / 100 || 0;
+            const withdrawalRate = parseFloat(document.getElementById('withdrawalRate').value) / 100 || 0;
+            const tradeCount = parseInt(document.getElementById('tradeCount').value) || 0;
+
+            // 底層基礎計算
+            const contractValue = stockPrice * contractSize;
+            const originalMargin = contractValue * marginTier;
+            const safeMarginPerContract = originalMargin * marginMultiple;
+            const profitPerContract = stockPrice * upwardTarget * contractSize;
+
+            // ⚠️ 檢查是否連第一口都買不起
+            const warningDiv = document.getElementById('warningMessage');
+            const warningDetail = document.getElementById('warningDetail');
+            
+            if (initialCapital < safeMarginPerContract) {
+                warningDiv.classList.remove('hidden');
+                warningDetail.innerHTML = `您的策略要求每口需準備 <strong>${formatCurrency(safeMarginPerContract)} 元</strong> 的安全保證金，但您的總資金只有 <strong>${formatCurrency(initialCapital)} 元</strong>。<br>💡 解決方案：請嘗試切換為「小型契約」、降低「保證金倍數」，或增加「初始資金」。`;
+            } else {
+                warningDiv.classList.add('hidden');
+            }
+
+            let currentCapital = initialCapital;
+            let cumulativeCash = 0;
+            
+            const labels = ['第0次 (初始)'];
+            const accountData = [initialCapital];
+            const cashData = [0];
+            const tableRows = [];
+
+            // 執行逐期迴圈運算
+            for (let i = 1; i <= tradeCount; i++) {
+                const startCapital = currentCapital;
+                
+                // 計算可買口數 (無條件捨去取整數)
+                const affordableContracts = Math.floor(currentCapital / safeMarginPerContract);
+                
+                // 當期總獲利
+                const currentProfit = affordableContracts * profitPerContract;
+                
+                // 計算提領與投入
+                const withdrawnCash = currentProfit * withdrawalRate;
+                const reinvested = currentProfit - withdrawnCash;
+                
+                currentCapital += reinvested;
+                cumulativeCash += withdrawnCash;
+
+                // 紀錄圖表數據
+                labels.push(`第${i}次`);
+                accountData.push(currentCapital);
+                cashData.push(cumulativeCash);
+
+                // 紀錄表格數據
+                tableRows.push(`
+                    <tr class="hover:bg-gray-50 transition">
+                        <td class="p-3 text-center text-gray-500">${i}</td>
+                        <td class="p-3">${formatCurrency(startCapital)}</td>
+                        <td class="p-3 font-semibold ${affordableContracts === 0 ? 'text-red-500' : ''}">${affordableContracts}</td>
+                        <td class="p-3 text-orange-500">+${formatCurrency(currentProfit)}</td>
+                        <td class="p-3 text-blue-600 font-medium">+${formatCurrency(withdrawnCash)}</td>
+                        <td class="p-3 text-green-600 font-bold">${formatCurrency(currentCapital)}</td>
+                    </tr>
+                `);
+            }
+
+            // 更新頂部卡片 UI
+            document.getElementById('resCash').innerText = '$' + formatCurrency(cumulativeCash);
+            document.getElementById('resAccount').innerText = '$' + formatCurrency(currentCapital);
+            document.getElementById('resTotal').innerText = '$' + formatCurrency(currentCapital + cumulativeCash);
+
+            // 更新表格 UI
+            document.getElementById('tableBody').innerHTML = tableRows.join('');
+
+            // 更新或繪製 Chart.js 圖表
+            const ctx = document.getElementById('growthChart').getContext('2d');
+            
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            myChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '期末帳戶餘額 (市場資金)',
+                            data: accountData,
+                            backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                            stack: 'Stack 0',
+                        },
+                        {
+                            label: '累計入袋現金 (絕對安全)',
+                            data: cashData,
+                            backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                            stack: 'Stack 0',
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        x: { stacked: true },
+                        y: { 
+                            stacked: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value >= 10000 ? (value / 10000) + '萬' : value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        window.onload = calculate;
+    </script>
+</body>
+</html>

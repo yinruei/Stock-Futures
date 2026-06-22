@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>佛系交易實驗室 - 實戰交易紀錄與資產追蹤</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, '微軟正黑體', sans-serif; }
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 p-4 md:p-8">
+
+    <div class="max-w-[1400px] mx-auto space-y-6">
+        
+        <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-indigo-500 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">📓 實戰交易紀錄 (獨立風控版)</h1>
+                <p class="text-gray-500 mt-1 text-sm">支援單筆獨立保證金與防禦倍數設定，精準計算資金圈存。</p>
+            </div>
+            
+            <div class="flex flex-wrap gap-4 bg-indigo-50 p-4 rounded-xl border-2 border-indigo-100 shadow-sm w-full md:w-auto">
+                <div>
+                    <label class="text-sm font-bold text-indigo-800">初始總資金</label>
+                    <input type="number" id="baseCapital" value="300000" class="block w-40 border-2 border-indigo-200 rounded-lg p-2 mt-1 text-lg font-black text-gray-800 focus:ring-2 focus:ring-indigo-400 outline-none transition" onchange="recalculateAll()">
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-indigo-800">獲利提領比例 (%)</label>
+                    <input type="number" id="baseWithdrawalRate" value="10" class="block w-32 border-2 border-indigo-200 rounded-lg p-2 mt-1 text-lg font-black text-gray-800 focus:ring-2 focus:ring-indigo-400 outline-none transition" onchange="recalculateAll()">
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white rounded-xl shadow-sm p-5 border-b-4 border-green-500">
+                <div class="text-gray-500 text-sm font-bold mb-1">📈 帳戶總餘額 (總淨值)</div>
+                <div class="text-3xl font-black text-gray-800" id="dashAccountBalance">300,000</div>
+            </div>
+            <div class="bg-indigo-600 rounded-xl shadow-sm p-5 border-b-4 border-indigo-900 text-white relative overflow-hidden">
+                <div class="text-indigo-200 text-sm font-bold mb-1">✅ 可用買盤資金 (購買力)</div>
+                <div class="text-3xl font-black" id="dashAvailableCapital">300,000</div>
+                <div class="mt-2 text-xs font-medium text-indigo-300">
+                    🔒 已圈存保證金: <span id="dashLockedMargin" class="text-white">0</span>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-5 border-b-4 border-blue-500">
+                <div class="text-gray-500 text-sm font-bold mb-1">🏦 累計入袋現金 (絕對安全)</div>
+                <div class="text-3xl font-black text-blue-600" id="dashTotalWithdrawn">0</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-5 border-b-4 border-orange-500">
+                <div class="text-gray-500 text-sm font-bold mb-1">🎯 結算勝率 / 平倉單數</div>
+                <div class="text-3xl font-black text-gray-800"><span id="dashWinRate">0.0%</span> <span class="text-lg text-gray-400 font-medium">/ <span id="dashClosedTrades">0</span> 單</span></div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h2 class="text-lg font-semibold mb-4 border-b pb-2">🚀 建立新部位 (單筆專屬風控)</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">標的名稱</label>
+                    <input type="text" id="tradeSymbol" placeholder="例如: 小型瑞昱" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">契約規格 (股)</label>
+                    <select id="tradeContractSize" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                        <option value="100">小型 (100股)</option>
+                        <option value="2000">標準 (2000股)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">買進口數</label>
+                    <input type="number" id="tradeQuantity" value="1" min="1" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1 border-b-2 border-indigo-400 inline-block">進場價格 (必填)</label>
+                    <input type="number" id="tradeEntryPrice" placeholder="輸入成交價" step="0.5" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none" oninput="calculateTPSL()">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">期交所級距 (%)</label>
+                    <input type="number" id="tradeMarginTier" value="13.5" step="0.1" class="w-full border rounded-lg p-2 bg-orange-50 focus:ring-2 focus:ring-orange-300 outline-none" title="例如：13.5 或 16.2 或 20.25">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">專屬防禦倍數</label>
+                    <input type="number" id="tradeMarginMultiple" value="3" step="0.1" class="w-full border rounded-lg p-2 bg-orange-50 focus:ring-2 focus:ring-orange-300 outline-none" title="設定此單的安全槓桿">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-500 mb-1">真實出場價格</label>
+                    <input type="number" id="tradeExitPrice" placeholder="(平倉後填寫)" step="0.5" class="w-full border rounded-lg p-2 bg-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div>
+                    <button onclick="addTrade()" class="w-full px-6 py-2 h-[42px] bg-gray-800 hover:bg-black text-white font-bold rounded-lg transition shadow-sm whitespace-nowrap">
+                        📝 檢核並寫入紀錄
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 flex gap-6 items-center">
+                <div class="text-sm text-gray-600 font-medium whitespace-nowrap">💡 紀律風控試算：</div>
+                <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                    <div class="bg-green-100 text-green-800 p-2 rounded border border-green-200 flex justify-between items-center">
+                        <span class="font-bold text-xs">🎯 停利目標 (+10%)</span>
+                        <span class="font-black text-lg" id="hintTP">--</span>
+                    </div>
+                    <div class="bg-red-100 text-red-800 p-2 rounded border border-red-200 flex justify-between items-center">
+                        <span class="font-bold text-xs">🛡️ 停損防線 (-5%)</span>
+                        <span class="font-black text-lg" id="hintSL">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-md p-6 overflow-hidden">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 class="text-lg font-semibold">📋 交易明細與獨立資金圈存狀態</h2>
+                <button onclick="resetData()" class="text-sm text-red-500 hover:text-red-700 font-medium transition">
+                    🗑️ 清空所有紀錄
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-right text-sm">
+                    <thead class="bg-gray-50 text-gray-600 border-b">
+                        <tr>
+                            <th class="p-3 text-left">標的名稱</th>
+                            <th class="p-3">規格 / 風控設定</th>
+                            <th class="p-3">進場價</th>
+                            <th class="p-3 text-center">風控點位 (利/損)</th>
+                            <th class="p-3 text-center bg-gray-100 rounded-t-lg">出場操作 / 價格</th>
+                            <th class="p-3">損益 / 狀態</th>
+                            <th class="p-3">提領現金</th>
+                            <th class="p-3">結算後餘額</th>
+                            <th class="p-3 text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeHistoryBody" class="divide-y divide-gray-100">
+                        <tr>
+                            <td colspan="9" class="p-6 text-center text-gray-400">目前尚無交易紀錄，請在上方新增部位。</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let trades = [];
+        let tradeIdCounter = 1; 
+        let globalAvailableCapital = 0; 
+
+        function formatCurrency(num) {
+            return Math.floor(num).toLocaleString('en-US');
+        }
+
+        function calculateTPSL() {
+            const entryStr = document.getElementById('tradeEntryPrice').value;
+            const tpElement = document.getElementById('hintTP');
+            const slElement = document.getElementById('hintSL');
+
+            if (!entryStr || isNaN(entryStr)) {
+                tpElement.innerText = '--';
+                slElement.innerText = '--';
+                return;
+            }
+
+            const entryPrice = parseFloat(entryStr);
+            tpElement.innerText = (entryPrice * 1.10).toFixed(1);
+            slElement.innerText = (entryPrice * 0.95).toFixed(1);
+        }
+
+        function addTrade() {
+            const symbol = document.getElementById('tradeSymbol').value || '未命名標的';
+            const contractSize = parseInt(document.getElementById('tradeContractSize').value);
+            const quantity = parseInt(document.getElementById('tradeQuantity').value);
+            const entryPrice = parseFloat(document.getElementById('tradeEntryPrice').value);
+            
+            // 讀取這筆單的專屬風控設定
+            const marginTier = parseFloat(document.getElementById('tradeMarginTier').value) / 100;
+            const marginMultiple = parseFloat(document.getElementById('tradeMarginMultiple').value);
+
+            const exitStr = document.getElementById('tradeExitPrice').value;
+            const exitPrice = exitStr ? parseFloat(exitStr) : null;
+
+            if (isNaN(quantity) || isNaN(entryPrice) || isNaN(marginTier) || isNaN(marginMultiple)) {
+                alert("請完整填寫買進口數、進場價格與專屬風控設定！");
+                return;
+            }
+
+            // 單筆專屬所需保證金
+            const requiredMarginPerContract = entryPrice * contractSize * marginTier * marginMultiple;
+            const totalRequiredMargin = requiredMarginPerContract * quantity;
+
+            // 未平倉檢查可用資金
+            if (exitPrice === null) {
+                if (totalRequiredMargin > globalAvailableCapital) {
+                    alert(`⚠️ 風控阻擋：\n此筆交易 (級距 ${marginTier*100}% × 防禦 ${marginMultiple}倍)\n需圈存保證金 ${formatCurrency(totalRequiredMargin)} 元，\n但您的帳戶「可用資金」僅剩 ${formatCurrency(globalAvailableCapital)} 元！\n\n請降低買進口數、調降防禦倍數，或等待其他部位平倉。`);
+                    return;
+                }
+            }
+
+            trades.push({
+                id: tradeIdCounter++,
+                symbol: symbol,
+                contractSize: contractSize,
+                quantity: quantity,
+                entryPrice: entryPrice,
+                exitPrice: exitPrice,
+                marginTier: marginTier * 100, // 存回 % 數方便顯示
+                marginMultiple: marginMultiple,
+                requiredMarginPerContract: requiredMarginPerContract
+            });
+
+            // 清空進場相關，保留風控數值方便下一單連打
+            document.getElementById('tradeEntryPrice').value = '';
+            document.getElementById('tradeExitPrice').value = '';
+            calculateTPSL(); 
+            recalculateAll();
+        }
+
+        function closeTrade(id) {
+            const tradeIndex = trades.findIndex(t => t.id === id);
+            if (tradeIndex === -1) return;
+            const trade = trades[tradeIndex];
+
+            const exitStr = document.getElementById(`exitInput_${id}`).value;
+            const qtyStr = document.getElementById(`exitQty_${id}`).value;
+
+            const exitP = parseFloat(exitStr);
+            const closeQ = parseInt(qtyStr);
+            
+            if (isNaN(exitP)) {
+                alert("請輸入有效的真實出場價格！");
+                return;
+            }
+            if (isNaN(closeQ) || closeQ <= 0 || closeQ > trade.quantity) {
+                alert(`平倉口數錯誤！請輸入 1 到 ${trade.quantity} 之間的數字。`);
+                return;
+            }
+
+            if (closeQ === trade.quantity) {
+                trade.exitPrice = exitP;
+            } else {
+                trade.quantity -= closeQ;
+                trades.push({
+                    id: tradeIdCounter++,
+                    symbol: trade.symbol + " (分批)",
+                    contractSize: trade.contractSize,
+                    quantity: closeQ,
+                    entryPrice: trade.entryPrice,
+                    exitPrice: exitP,
+                    marginTier: trade.marginTier,
+                    marginMultiple: trade.marginMultiple,
+                    requiredMarginPerContract: trade.requiredMarginPerContract
+                });
+            }
+
+            recalculateAll();
+        }
+
+        function deleteTrade(id) {
+            if(confirm("確定要刪除這筆紀錄嗎？此動作將重新計算所有資產與可用資金。")) {
+                trades = trades.filter(t => t.id !== id);
+                recalculateAll();
+            }
+        }
+
+        function recalculateAll() {
+            const baseCapital = parseFloat(document.getElementById('baseCapital').value) || 0;
+            const withdrawalRate = parseFloat(document.getElementById('baseWithdrawalRate').value) / 100 || 0;
+
+            let currentBalance = baseCapital;
+            let totalWithdrawn = 0;
+            let winCount = 0;
+            let closedCount = 0;
+            let totalLockedMargin = 0; 
+
+            const tbody = document.getElementById('tradeHistoryBody');
+            tbody.innerHTML = ''; 
+
+            if (trades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="p-6 text-center text-gray-400">目前尚無交易紀錄，請在上方新增部位。</td></tr>';
+                globalAvailableCapital = baseCapital;
+                updateDashboard(currentBalance, globalAvailableCapital, 0, totalWithdrawn, 0, 0);
+                return;
+            }
+
+            trades.forEach(trade => {
+                if (trade.exitPrice !== null && !isNaN(trade.exitPrice)) {
+                    trade.isOpen = false;
+                    closedCount++;
+                    
+                    const pnl = (trade.exitPrice - trade.entryPrice) * trade.contractSize * trade.quantity;
+                    let withdrawn = 0;
+
+                    if (pnl > 0) {
+                        withdrawn = pnl * withdrawalRate;
+                        winCount++;
+                    }
+
+                    const netAccountChange = pnl - withdrawn;
+                    currentBalance += netAccountChange;
+                    totalWithdrawn += withdrawn;
+
+                    trade.calculatedPnl = pnl;
+                    trade.calculatedWithdrawn = withdrawn;
+                    trade.resultingBalance = currentBalance;
+                } else {
+                    trade.isOpen = true;
+                    trade.calculatedPnl = null;
+                    trade.calculatedWithdrawn = null;
+                    trade.resultingBalance = currentBalance;
+                    
+                    totalLockedMargin += (trade.requiredMarginPerContract * trade.quantity);
+                }
+            });
+
+            globalAvailableCapital = currentBalance - totalLockedMargin;
+
+            const reversedTrades = [...trades].reverse();
+            
+            reversedTrades.forEach(trade => {
+                const tr = document.createElement('tr');
+                
+                const targetTP = (trade.entryPrice * 1.10).toFixed(1);
+                const targetSL = (trade.entryPrice * 0.95).toFixed(1);
+                const riskControlHTML = `<div class="text-xs tracking-wider"><span class="text-green-600 font-bold">🎯 ${targetTP}</span><br><span class="text-red-500 font-bold">🛡️ ${targetSL}</span></div>`;
+                
+                // 組合顯示規格與這筆單專屬的風控設定
+                const specsHTML = `<div class="font-bold text-gray-700">${trade.contractSize == 100 ? '小型' : '標準'} / <span class="text-orange-600">${trade.quantity}</span> 口</div>
+                                   <div class="text-xs text-gray-500 mt-1 tracking-tight bg-gray-100 rounded inline-block px-1">級距 ${trade.marginTier}% | 防禦 ${trade.marginMultiple}x</div>`;
+
+                if (trade.isOpen) {
+                    const lockedMarginDisplay = trade.requiredMarginPerContract * trade.quantity;
+                    tr.className = "bg-orange-50 hover:bg-orange-100 transition border-b border-orange-100";
+                    tr.innerHTML = `
+                        <td class="p-3 text-left font-bold text-gray-800">${trade.symbol}</td>
+                        <td class="p-3">${specsHTML}</td>
+                        <td class="p-3 font-medium">${trade.entryPrice}</td>
+                        <td class="p-3 text-center bg-orange-100/50 rounded-lg">${riskControlHTML}</td>
+                        <td class="p-3 bg-gray-50/50">
+                            <div class="flex items-center justify-center gap-1">
+                                <input type="number" id="exitQty_${trade.id}" value="${trade.quantity}" max="${trade.quantity}" min="1" class="w-14 border border-gray-300 rounded p-1 text-sm text-center bg-white" title="平倉口數">
+                                <span class="text-xs text-gray-400 mr-1">口</span>
+                                <input type="number" id="exitInput_${trade.id}" class="w-20 border border-gray-300 rounded p-1 text-sm text-right bg-white" placeholder="出場價">
+                                <button onclick="closeTrade(${trade.id})" class="bg-indigo-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-indigo-700 shadow-sm ml-1">結算</button>
+                            </div>
+                        </td>
+                        <td class="p-3 text-right">
+                            <div class="text-orange-600 font-bold text-sm tracking-widest">未平倉</div>
+                            <div class="text-xs text-gray-500 mt-1">🔒 圈存 ${formatCurrency(lockedMarginDisplay)}</div>
+                        </td>
+                        <td class="p-3 text-gray-400 text-right">-</td>
+                        <td class="p-3 text-gray-400 text-right">${formatCurrency(trade.resultingBalance)}</td>
+                        <td class="p-3 text-center">
+                            <button onclick="deleteTrade(${trade.id})" class="text-red-400 hover:text-red-600 transition" title="刪除此紀錄">🗑️</button>
+                        </td>
+                    `;
+                } else {
+                    tr.className = "hover:bg-gray-50 transition border-b border-gray-100 bg-white";
+                    const pnlClass = trade.calculatedPnl > 0 ? 'text-green-600 font-bold' : (trade.calculatedPnl < 0 ? 'text-red-500 font-bold' : 'text-gray-500');
+                    const pnlPrefix = trade.calculatedPnl > 0 ? '+' : '';
+                    const withdrawText = trade.calculatedWithdrawn > 0 ? `+${formatCurrency(trade.calculatedWithdrawn)}` : '-';
+
+                    tr.innerHTML = `
+                        <td class="p-3 text-left font-medium text-gray-700">${trade.symbol}</td>
+                        <td class="p-3">${specsHTML}</td>
+                        <td class="p-3">${trade.entryPrice}</td>
+                        <td class="p-3 text-center opacity-60">${riskControlHTML}</td>
+                        <td class="p-3 font-bold text-gray-800 text-center">${trade.quantity} 口 @ ${trade.exitPrice}</td>
+                        <td class="p-3 ${pnlClass} text-right">${pnlPrefix}${formatCurrency(trade.calculatedPnl)}</td>
+                        <td class="p-3 text-blue-600 text-right">${withdrawText}</td>
+                        <td class="p-3 font-bold text-gray-800 text-right">${formatCurrency(trade.resultingBalance)}</td>
+                        <td class="p-3 text-center">
+                            <button onclick="deleteTrade(${trade.id})" class="text-red-400 hover:text-red-600 transition" title="刪除此紀錄">🗑️</button>
+                        </td>
+                    `;
+                }
+                tbody.appendChild(tr);
+            });
+
+            const winRate = closedCount > 0 ? (winCount / closedCount) * 100 : 0;
+            updateDashboard(currentBalance, globalAvailableCapital, totalLockedMargin, totalWithdrawn, closedCount, winRate);
+        }
+
+        function updateDashboard(balance, available, locked, withdrawn, closedCount, winRate) {
+            document.getElementById('dashAccountBalance').innerText = formatCurrency(balance);
+            document.getElementById('dashAvailableCapital').innerText = formatCurrency(available);
+            document.getElementById('dashLockedMargin').innerText = formatCurrency(locked);
+            document.getElementById('dashTotalWithdrawn').innerText = formatCurrency(withdrawn);
+            document.getElementById('dashClosedTrades').innerText = closedCount;
+            document.getElementById('dashWinRate').innerText = winRate.toFixed(1) + '%';
+        }
+
+        function resetData() {
+            if(confirm("確定要清空所有的交易紀錄嗎？此動作無法復原。")) {
+                trades = [];
+                recalculateAll();
+            }
+        }
+
+        window.onload = function() {
+            recalculateAll();
+        };
+    </script>
+</body>
+</html>
