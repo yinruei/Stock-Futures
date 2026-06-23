@@ -544,6 +544,8 @@
                 } else {
                     const pnlClass    = trade.calculatedPnl > 0 ? 'text-green-600 font-bold' : (trade.calculatedPnl < 0 ? 'text-red-500 font-bold' : 'text-gray-500');
                     const pnlPrefix   = trade.calculatedPnl > 0 ? '+' : '';
+                    const pnlPercent  = trade.entryPrice ? ((trade.exitPrice - trade.entryPrice) / trade.entryPrice) * 100 : 0;
+                    const pctPrefix   = pnlPercent > 0 ? '+' : '';
                     const withdrawText= trade.calculatedWithdrawn > 0 ? `+${formatCurrency(trade.calculatedWithdrawn)}` : '-';
                     tr.className = 'hover:bg-gray-50 transition border-b border-gray-100 bg-white';
                     tr.innerHTML = `
@@ -552,7 +554,10 @@
                         <td class="p-3">${trade.entryPrice}</td>
                         <td class="p-3 text-center opacity-60">${riskControlHTML}</td>
                         <td class="p-3 font-bold text-gray-800 text-center">${trade.quantity} 口 @ ${trade.exitPrice}</td>
-                        <td class="p-3 ${pnlClass} text-right">${pnlPrefix}${formatCurrency(trade.calculatedPnl)}</td>
+                        <td class="p-3 ${pnlClass} text-right">
+                            <div>${pnlPrefix}${formatCurrency(trade.calculatedPnl)}</div>
+                            <div class="text-xs mt-0.5">${pctPrefix}${pnlPercent.toFixed(2)}%</div>
+                        </td>
                         <td class="p-3 text-blue-600 text-right">${withdrawText}</td>
                         <td class="p-3 font-bold text-gray-800 text-right">${formatCurrency(trade.resultingBalance)}</td>
                         <td class="p-3 text-center">
