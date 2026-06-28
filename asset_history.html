@@ -395,7 +395,8 @@
                 entryPrice: t.entry_price,
                 exitPrice: t.exit_price,
                 marginTier: t.margin_tier,
-                marginMultiple: t.margin_multiple
+                marginMultiple: t.margin_multiple,
+                isShort: t.is_short || false
             }));
 
             renderAll();
@@ -422,7 +423,9 @@
             trades
                 .filter(t => t.exitPrice !== null && !isNaN(t.exitPrice))
                 .forEach(t => {
-                    const grossPnl = (t.exitPrice - t.entryPrice) * t.contractSize * t.quantity;
+                    const grossPnl = t.isShort
+                        ? (t.entryPrice - t.exitPrice) * t.contractSize * t.quantity
+                        : (t.exitPrice - t.entryPrice) * t.contractSize * t.quantity;
                     const fee      = feePerContract * t.quantity;
                     const pnl      = grossPnl - fee;
                     const withdrawn= pnl > 0 ? pnl * withdrawalRate : 0;

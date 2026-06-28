@@ -163,9 +163,21 @@
                     <label class="block text-sm font-medium text-gray-700 mb-1">防禦倍數</label>
                     <input type="number" id="editMarginMultiple" step="0.1" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
                 </div>
-                <div class="sm:col-span-2">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">方向</label>
+                    <select id="editDirection" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                        <option value="long">📈 做多</option>
+                        <option value="short">📉 做空</option>
+                    </select>
+                </div>
+                <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">出場價格 <span class="text-gray-400 font-normal">(留空 = 未平倉)</span></label>
                     <input type="number" id="editExitPrice" step="0.5" placeholder="留空表示未平倉"
+                        class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">交易備註 <span class="text-gray-400 font-normal">(可留空)</span></label>
+                    <input type="text" id="editNotes" placeholder="交易備註"
                         class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
                 </div>
             </div>
@@ -257,11 +269,19 @@
         <div class="bg-white rounded-xl shadow-md p-6">
             <h2 class="text-lg font-semibold mb-4 border-b pb-2">🚀 建立新部位 (單筆專屬風控)</h2>
 
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">標的名稱</label>
                     <input type="text" id="tradeSymbol" placeholder="例如: 小型瑞昱"
                         class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">方向</label>
+                    <select id="tradeDirection" onchange="calculateTPSL()"
+                        class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                        <option value="long">📈 做多</option>
+                        <option value="short">📉 做空</option>
+                    </select>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">契約規格 (股)</label>
@@ -271,7 +291,7 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">買進口數</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">口數</label>
                     <input type="number" id="tradeQuantity" value="1" min="1"
                         class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
                 </div>
@@ -307,15 +327,21 @@
                 </div>
             </div>
 
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">交易備註 <span class="text-gray-400 font-normal">(可留空)</span></label>
+                <input type="text" id="tradeNotes" placeholder="例如：突破平台後進場，順大盤趨勢"
+                    class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+            </div>
+
             <div class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 flex gap-6 items-center">
                 <div class="text-sm text-gray-600 font-medium whitespace-nowrap">💡 紀律風控試算：</div>
                 <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                     <div class="bg-green-100 text-green-800 p-2 rounded border border-green-200 flex justify-between items-center">
-                        <span class="font-bold text-xs">🎯 停利目標 (+10%)</span>
+                        <span class="font-bold text-xs" id="hintTPLabel">🎯 停利目標 (+10%)</span>
                         <span class="font-black text-lg" id="hintTP">--</span>
                     </div>
                     <div class="bg-red-100 text-red-800 p-2 rounded border border-red-200 flex justify-between items-center">
-                        <span class="font-bold text-xs">🛡️ 停損防線 (-5%)</span>
+                        <span class="font-bold text-xs" id="hintSLLabel">🛡️ 停損防線 (-5%)</span>
                         <span class="font-black text-lg" id="hintSL">--</span>
                     </div>
                 </div>
@@ -533,7 +559,9 @@
                 exitPrice: t.exit_price,
                 marginTier: t.margin_tier,
                 marginMultiple: t.margin_multiple,
-                requiredMarginPerContract: t.required_margin_per_contract
+                requiredMarginPerContract: t.required_margin_per_contract,
+                isShort: t.is_short || false,
+                notes: t.notes || ''
             };
         }
 
@@ -554,19 +582,30 @@
         }
 
         function calculateTPSL() {
-            const val = document.getElementById('tradeEntryPrice').value;
+            const val     = document.getElementById('tradeEntryPrice').value;
+            const isShort = document.getElementById('tradeDirection').value === 'short';
             if (!val || isNaN(val)) {
                 document.getElementById('hintTP').innerText = '--';
                 document.getElementById('hintSL').innerText = '--';
                 return;
             }
             const p = parseFloat(val);
-            document.getElementById('hintTP').innerText = (p * 1.10).toFixed(1);
-            document.getElementById('hintSL').innerText = (p * 0.95).toFixed(1);
+            if (isShort) {
+                document.getElementById('hintTPLabel').innerText = '🎯 停利目標 (-10%)';
+                document.getElementById('hintSLLabel').innerText = '🛡️ 停損防線 (+5%)';
+                document.getElementById('hintTP').innerText = (p * 0.90).toFixed(1);
+                document.getElementById('hintSL').innerText = (p * 1.05).toFixed(1);
+            } else {
+                document.getElementById('hintTPLabel').innerText = '🎯 停利目標 (+10%)';
+                document.getElementById('hintSLLabel').innerText = '🛡️ 停損防線 (-5%)';
+                document.getElementById('hintTP').innerText = (p * 1.10).toFixed(1);
+                document.getElementById('hintSL').innerText = (p * 0.95).toFixed(1);
+            }
         }
 
         async function addTrade() {
             const symbol        = document.getElementById('tradeSymbol').value || '未命名標的';
+            const isShort       = document.getElementById('tradeDirection').value === 'short';
             const contractSize  = parseInt(document.getElementById('tradeContractSize').value);
             const quantity      = parseInt(document.getElementById('tradeQuantity').value);
             const entryPrice    = parseFloat(document.getElementById('tradeEntryPrice').value);
@@ -574,6 +613,7 @@
             const marginMultiple= parseFloat(document.getElementById('tradeMarginMultiple').value);
             const exitStr       = document.getElementById('tradeExitPrice').value;
             const exitPrice     = exitStr ? parseFloat(exitStr) : null;
+            const notes         = document.getElementById('tradeNotes').value.trim();
 
             if (isNaN(quantity) || isNaN(entryPrice) || isNaN(marginTier) || isNaN(marginMultiple)) {
                 alert('請完整填寫買進口數、進場價格與專屬風控設定！');
@@ -601,7 +641,9 @@
                 exit_price: exitPrice,
                 margin_tier: marginTier * 100,
                 margin_multiple: marginMultiple,
-                required_margin_per_contract: requiredMarginPerContract
+                required_margin_per_contract: requiredMarginPerContract,
+                is_short: isShort,
+                notes
             }).select().single();
 
             btn.disabled  = false;
@@ -612,6 +654,7 @@
             trades.push(mapFromDB(data));
             document.getElementById('tradeEntryPrice').value = '';
             document.getElementById('tradeExitPrice').value  = '';
+            document.getElementById('tradeNotes').value      = '';
             calculateTPSL();
             recalculateAll();
         }
@@ -649,7 +692,9 @@
                     exit_price: exitP,
                     margin_tier: trade.marginTier,
                     margin_multiple: trade.marginMultiple,
-                    required_margin_per_contract: trade.requiredMarginPerContract
+                    required_margin_per_contract: trade.requiredMarginPerContract,
+                    is_short: trade.isShort,
+                    notes: ''
                 }).select().single();
 
                 if (errInsert) { alert('分批平倉寫入失敗：' + errInsert.message); return; }
@@ -703,7 +748,9 @@
                 if (trade.exitPrice !== null && !isNaN(trade.exitPrice)) {
                     trade.isOpen = false;
                     closedCount++;
-                    const grossPnl = (trade.exitPrice - trade.entryPrice) * trade.contractSize * trade.quantity;
+                    const grossPnl = trade.isShort
+                        ? (trade.entryPrice - trade.exitPrice) * trade.contractSize * trade.quantity
+                        : (trade.exitPrice - trade.entryPrice) * trade.contractSize * trade.quantity;
                     const fee      = feePerContract * trade.quantity;
                     const pnl      = grossPnl - fee;
                     let withdrawn = 0;
@@ -728,8 +775,8 @@
 
             [...trades].reverse().forEach(trade => {
                 const tr = document.createElement('tr');
-                const targetTP = (trade.entryPrice * 1.10).toFixed(1);
-                const targetSL = (trade.entryPrice * 0.95).toFixed(1);
+                const targetTP = trade.isShort ? (trade.entryPrice * 0.90).toFixed(1) : (trade.entryPrice * 1.10).toFixed(1);
+                const targetSL = trade.isShort ? (trade.entryPrice * 1.05).toFixed(1) : (trade.entryPrice * 0.95).toFixed(1);
 
                 const riskControlHTML = `<div class="text-xs tracking-wider">
                     <span class="text-green-600 font-bold">🎯 ${targetTP}</span><br>
@@ -743,7 +790,13 @@
                     const locked = trade.requiredMarginPerContract * trade.quantity;
                     tr.className = 'bg-orange-50 hover:bg-orange-100 transition border-b border-orange-100';
                     tr.innerHTML = `
-                        <td class="p-3 text-left font-bold text-gray-800">${trade.symbol}</td>
+                        <td class="p-3 text-left">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-xs font-bold px-1.5 py-0.5 rounded ${trade.isShort ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}">${trade.isShort ? '空' : '多'}</span>
+                                <span class="font-bold text-gray-800">${trade.symbol}</span>
+                            </div>
+                            ${trade.notes ? `<div class="text-xs text-gray-400 mt-0.5">💬 ${trade.notes}</div>` : ''}
+                        </td>
                         <td class="p-3">${specsHTML}</td>
                         <td class="p-3 font-medium">${trade.entryPrice}</td>
                         <td class="p-3 text-center bg-orange-100/50 rounded-lg">${riskControlHTML}</td>
@@ -772,12 +825,22 @@
                 } else {
                     const pnlClass    = trade.calculatedPnl > 0 ? 'text-green-600 font-bold' : (trade.calculatedPnl < 0 ? 'text-red-500 font-bold' : 'text-gray-500');
                     const pnlPrefix   = trade.calculatedPnl > 0 ? '+' : '';
-                    const pnlPercent  = trade.entryPrice ? ((trade.exitPrice - trade.entryPrice) / trade.entryPrice) * 100 : 0;
+                    const pnlPercent  = trade.entryPrice
+                        ? trade.isShort
+                            ? ((trade.entryPrice - trade.exitPrice) / trade.entryPrice) * 100
+                            : ((trade.exitPrice - trade.entryPrice) / trade.entryPrice) * 100
+                        : 0;
                     const pctPrefix   = pnlPercent > 0 ? '+' : '';
                     const withdrawText= trade.calculatedWithdrawn > 0 ? `+${formatCurrency(trade.calculatedWithdrawn)}` : '-';
                     tr.className = 'hover:bg-gray-50 transition border-b border-gray-100 bg-white';
                     tr.innerHTML = `
-                        <td class="p-3 text-left font-medium text-gray-700">${trade.symbol}</td>
+                        <td class="p-3 text-left">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-xs font-bold px-1.5 py-0.5 rounded ${trade.isShort ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}">${trade.isShort ? '空' : '多'}</span>
+                                <span class="font-medium text-gray-700">${trade.symbol}</span>
+                            </div>
+                            ${trade.notes ? `<div class="text-xs text-gray-400 mt-0.5">💬 ${trade.notes}</div>` : ''}
+                        </td>
                         <td class="p-3">${specsHTML}</td>
                         <td class="p-3">${trade.entryPrice}</td>
                         <td class="p-3 text-center opacity-60">${riskControlHTML}</td>
@@ -830,14 +893,16 @@
         function editTrade(id) {
             const trade = trades.find(t => t.id === id);
             if (!trade) return;
-            document.getElementById('editTradeId').value      = id;
-            document.getElementById('editSymbol').value       = trade.symbol;
-            document.getElementById('editContractSize').value = trade.contractSize;
-            document.getElementById('editQuantity').value     = trade.quantity;
-            document.getElementById('editEntryPrice').value   = trade.entryPrice;
-            document.getElementById('editMarginTier').value   = trade.marginTier;
+            document.getElementById('editTradeId').value        = id;
+            document.getElementById('editSymbol').value         = trade.symbol;
+            document.getElementById('editContractSize').value   = trade.contractSize;
+            document.getElementById('editQuantity').value       = trade.quantity;
+            document.getElementById('editEntryPrice').value     = trade.entryPrice;
+            document.getElementById('editMarginTier').value     = trade.marginTier;
             document.getElementById('editMarginMultiple').value = trade.marginMultiple;
-            document.getElementById('editExitPrice').value    = trade.exitPrice !== null ? trade.exitPrice : '';
+            document.getElementById('editDirection').value      = trade.isShort ? 'short' : 'long';
+            document.getElementById('editExitPrice').value      = trade.exitPrice !== null ? trade.exitPrice : '';
+            document.getElementById('editNotes').value          = trade.notes || '';
             document.getElementById('editMessage').classList.add('hidden');
             document.getElementById('editModal').classList.remove('hidden');
         }
@@ -854,8 +919,10 @@
             const entryPrice     = parseFloat(document.getElementById('editEntryPrice').value);
             const marginTier     = parseFloat(document.getElementById('editMarginTier').value);
             const marginMultiple = parseFloat(document.getElementById('editMarginMultiple').value);
+            const isShort        = document.getElementById('editDirection').value === 'short';
             const exitStr        = document.getElementById('editExitPrice').value;
             const exitPrice      = exitStr ? parseFloat(exitStr) : null;
+            const notes          = document.getElementById('editNotes').value.trim();
 
             if (isNaN(quantity) || isNaN(entryPrice) || isNaN(marginTier) || isNaN(marginMultiple)) {
                 showEditMsg('請填寫所有必填欄位', 'error');
@@ -872,14 +939,16 @@
                 exit_price:      exitPrice,
                 margin_tier:     marginTier,
                 margin_multiple: marginMultiple,
-                required_margin_per_contract: requiredMarginPerContract
+                required_margin_per_contract: requiredMarginPerContract,
+                is_short: isShort,
+                notes
             }).eq('id', id);
 
             if (error) { showEditMsg('儲存失敗：' + error.message, 'error'); return; }
 
             const idx = trades.findIndex(t => t.id === id);
             if (idx !== -1) {
-                trades[idx] = { ...trades[idx], symbol, contractSize, quantity, entryPrice, exitPrice, marginTier, marginMultiple, requiredMarginPerContract };
+                trades[idx] = { ...trades[idx], symbol, contractSize, quantity, entryPrice, exitPrice, marginTier, marginMultiple, requiredMarginPerContract, isShort, notes };
             }
 
             closeEditModal();
