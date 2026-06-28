@@ -4,12 +4,49 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>佛系交易實驗室 - 實戰交易紀錄與資產追蹤</title>
+    <script>(function(){const t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark');})()</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: 'Helvetica Neue', Helvetica, Arial, '微軟正黑體', sans-serif; }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+        /* ── Dark Mode ── */
+        html.dark body { background-color: #0f172a; color: #e2e8f0; }
+        html.dark .bg-white { background-color: #1e293b !important; }
+        html.dark .bg-gray-100 { background-color: #0f172a !important; }
+        html.dark .bg-gray-50 { background-color: #1e293b !important; }
+        html.dark .bg-gray-50\/50 { background-color: rgba(15,23,42,0.5) !important; }
+        html.dark .text-gray-900 { color: #f1f5f9 !important; }
+        html.dark .text-gray-800 { color: #e2e8f0 !important; }
+        html.dark .text-gray-700 { color: #cbd5e1 !important; }
+        html.dark .text-gray-600 { color: #94a3b8 !important; }
+        html.dark .text-gray-500 { color: #64748b !important; }
+        html.dark .text-gray-400 { color: #475569 !important; }
+        html.dark .border, html.dark .border-b { border-color: #334155 !important; }
+        html.dark .border-gray-100, html.dark .border-gray-200,
+        html.dark .border-gray-300, html.dark .border-orange-100 { border-color: #334155 !important; }
+        html.dark .border-indigo-100, html.dark .border-indigo-200 { border-color: #3730a3 !important; }
+        html.dark [class*="divide-"] > * { border-color: #334155 !important; }
+        html.dark input:not([type=range]), html.dark select {
+            background-color: #1e293b !important;
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
+        html.dark input::placeholder { color: #475569 !important; }
+        html.dark .bg-orange-50 { background-color: rgba(249,115,22,0.1) !important; }
+        html.dark .bg-orange-100 { background-color: rgba(249,115,22,0.15) !important; }
+        html.dark .bg-orange-100\/50 { background-color: rgba(249,115,22,0.08) !important; }
+        html.dark .bg-indigo-50 { background-color: rgba(99,102,241,0.1) !important; }
+        html.dark .bg-green-100 { background-color: rgba(34,197,94,0.15) !important; }
+        html.dark .bg-red-100 { background-color: rgba(239,68,68,0.15) !important; }
+        html.dark .bg-gray-800 { background-color: #020617 !important; color: #f1f5f9 !important; }
+        html.dark .hover\:bg-gray-50:hover,
+        html.dark .hover\:bg-gray-100:hover { background-color: #334155 !important; }
+        html.dark .hover\:bg-orange-100:hover { background-color: rgba(249,115,22,0.2) !important; }
+        html.dark .shadow-md, html.dark .shadow-sm,
+        html.dark .shadow-2xl { box-shadow: 0 4px 24px rgba(0,0,0,0.5) !important; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 p-4 md:p-8">
@@ -53,9 +90,11 @@
     <div class="max-w-[1400px] mx-auto space-y-6">
 
         <!-- 頁面切換導覽列 -->
-        <div class="flex gap-2 bg-white rounded-xl shadow-md p-2">
+        <div class="flex gap-2 bg-white rounded-xl shadow-md p-2 items-center">
             <a href="index.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-600 hover:bg-gray-100 transition">📈 提領模擬器</a>
             <a href="trading_journal.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold bg-indigo-500 text-white transition">📓 交易紀錄</a>
+            <a href="asset_history.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-600 hover:bg-gray-100 transition">📊 資產走勢</a>
+            <button onclick="toggleTheme()" class="p-2 px-3 rounded-lg text-gray-600 hover:bg-gray-100 transition text-xl" title="切換日夜間模式"><span id="themeIcon">🌙</span></button>
         </div>
 
         <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-indigo-500 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -203,6 +242,7 @@
                             <th class="p-3">損益 / 狀態</th>
                             <th class="p-3">提領現金</th>
                             <th class="p-3">結算後餘額</th>
+                            <th class="p-3 text-orange-600">總淨值</th>
                             <th class="p-3 text-center">操作</th>
                         </tr>
                     </thead>
@@ -218,6 +258,16 @@
     </div>
 
     <script>
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            document.getElementById('themeIcon').innerText = isDark ? '☀️' : '🌙';
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('themeIcon').innerText =
+                document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+        });
+
         const SUPABASE_URL = 'https://uqbgpmnqrasvpnwvtjgo.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_p1_pOL1tIeBp5Ksx-_LPDA_kh_QkQyZ';
         const { createClient } = supabase;
@@ -489,11 +539,13 @@
                     trade.calculatedPnl       = pnl;
                     trade.calculatedWithdrawn = withdrawn;
                     trade.resultingBalance    = currentBalance;
+                    trade.totalNetWorth       = currentBalance + totalWithdrawn;
                 } else {
                     trade.isOpen              = true;
                     trade.calculatedPnl       = null;
                     trade.calculatedWithdrawn = null;
                     trade.resultingBalance    = currentBalance;
+                    trade.totalNetWorth       = currentBalance + totalWithdrawn;
                     totalLockedMargin += trade.requiredMarginPerContract * trade.quantity;
                 }
             });
@@ -538,6 +590,7 @@
                         </td>
                         <td class="p-3 text-gray-400 text-right">-</td>
                         <td class="p-3 text-gray-400 text-right">${formatCurrency(trade.resultingBalance)}</td>
+                        <td class="p-3 text-right font-bold text-orange-500">${formatCurrency(trade.totalNetWorth)}</td>
                         <td class="p-3 text-center">
                             <button onclick="deleteTrade('${trade.id}')" class="text-red-400 hover:text-red-600 transition">🗑️</button>
                         </td>`;
@@ -560,6 +613,7 @@
                         </td>
                         <td class="p-3 text-blue-600 text-right">${withdrawText}</td>
                         <td class="p-3 font-bold text-gray-800 text-right">${formatCurrency(trade.resultingBalance)}</td>
+                        <td class="p-3 font-bold text-orange-500 text-right">${formatCurrency(trade.totalNetWorth)}</td>
                         <td class="p-3 text-center">
                             <button onclick="deleteTrade('${trade.id}')" class="text-red-400 hover:text-red-600 transition">🗑️</button>
                         </td>`;
