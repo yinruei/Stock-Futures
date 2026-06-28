@@ -118,6 +118,12 @@
                             class="block w-32 border-2 border-indigo-200 rounded-lg p-2 mt-1 text-lg font-black text-gray-800 focus:ring-2 focus:ring-indigo-400 outline-none transition"
                             onchange="recalculateAll()">
                     </div>
+                    <div>
+                        <label class="text-sm font-bold text-indigo-800">手續費/口 (來回)</label>
+                        <input type="number" id="feePerContract" value="60"
+                            class="block w-28 border-2 border-indigo-200 rounded-lg p-2 mt-1 text-lg font-black text-gray-800 focus:ring-2 focus:ring-indigo-400 outline-none transition"
+                            onchange="recalculateAll()">
+                    </div>
                 </div>
                 <button onclick="signOut()"
                     class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium rounded-lg text-sm transition">
@@ -508,8 +514,9 @@
 
         // ── UI Rendering ──────────────────────────────────────
         function recalculateAll() {
-            const baseCapital    = parseFloat(document.getElementById('baseCapital').value) || 0;
-            const withdrawalRate = parseFloat(document.getElementById('baseWithdrawalRate').value) / 100 || 0;
+            const baseCapital      = parseFloat(document.getElementById('baseCapital').value) || 0;
+            const withdrawalRate   = parseFloat(document.getElementById('baseWithdrawalRate').value) / 100 || 0;
+            const feePerContract   = parseFloat(document.getElementById('feePerContract').value) || 0;
 
             let currentBalance    = baseCapital;
             let totalWithdrawn    = 0;
@@ -531,7 +538,9 @@
                 if (trade.exitPrice !== null && !isNaN(trade.exitPrice)) {
                     trade.isOpen = false;
                     closedCount++;
-                    const pnl = (trade.exitPrice - trade.entryPrice) * trade.contractSize * trade.quantity;
+                    const grossPnl = (trade.exitPrice - trade.entryPrice) * trade.contractSize * trade.quantity;
+                    const fee      = feePerContract * trade.quantity;
+                    const pnl      = grossPnl - fee;
                     let withdrawn = 0;
                     if (pnl > 0) { withdrawn = pnl * withdrawalRate; winCount++; }
                     currentBalance += pnl - withdrawn;
