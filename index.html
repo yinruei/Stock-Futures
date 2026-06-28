@@ -46,11 +46,11 @@
     <div class="max-w-6xl mx-auto space-y-6">
 
         <!-- 頁面切換導覽列 -->
-        <div class="flex gap-2 bg-white rounded-xl shadow-md p-2 items-center">
-            <a href="index.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold bg-orange-500 text-white transition">📈 提領模擬器</a>
-            <a href="trading_journal.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-600 hover:bg-gray-100 transition">📓 交易紀錄</a>
-            <a href="asset_history.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-600 hover:bg-gray-100 transition">📊 資產走勢</a>
-            <button onclick="toggleTheme()" class="p-2 px-3 rounded-lg text-gray-600 hover:bg-gray-100 transition text-xl" title="切換日夜間模式"><span id="themeIcon">🌙</span></button>
+        <div class="flex gap-1 sm:gap-2 bg-white rounded-xl shadow-md p-2 items-center">
+            <a href="index.html" class="flex-1 text-center py-2 px-1 sm:px-4 rounded-lg font-semibold text-xs sm:text-sm bg-orange-500 text-white transition">📈 <span class="sm:hidden">模擬器</span><span class="hidden sm:inline">提領模擬器</span></a>
+            <a href="trading_journal.html" class="flex-1 text-center py-2 px-1 sm:px-4 rounded-lg font-semibold text-xs sm:text-sm text-gray-600 hover:bg-gray-100 transition">📓 <span class="sm:hidden">交易</span><span class="hidden sm:inline">交易紀錄</span></a>
+            <a href="asset_history.html" class="flex-1 text-center py-2 px-1 sm:px-4 rounded-lg font-semibold text-xs sm:text-sm text-gray-600 hover:bg-gray-100 transition">📊 <span class="sm:hidden">走勢</span><span class="hidden sm:inline">資產走勢</span></a>
+            <button onclick="toggleTheme()" class="p-2 px-2 sm:px-3 rounded-lg text-gray-600 hover:bg-gray-100 transition text-xl" title="切換日夜間模式"><span id="themeIcon">🌙</span></button>
         </div>
 
         <!-- 標題區塊 -->
@@ -175,7 +175,21 @@
             return Math.floor(num).toLocaleString('en-US');
         }
 
+        const SIM_KEYS = ['initialCapital','stockPrice','contractSize','marginTier','marginMultiple','upwardTarget','withdrawalRate','tradeCount'];
+
+        function saveSimSettings() {
+            SIM_KEYS.forEach(k => localStorage.setItem('sim_' + k, document.getElementById(k).value));
+        }
+
+        function loadSimSettings() {
+            SIM_KEYS.forEach(k => {
+                const v = localStorage.getItem('sim_' + k);
+                if (v !== null) document.getElementById(k).value = v;
+            });
+        }
+
         function calculate() {
+            saveSimSettings();
             // 取得輸入參數
             const initialCapital = parseFloat(document.getElementById('initialCapital').value) || 0;
             const stockPrice = parseFloat(document.getElementById('stockPrice').value) || 0;
@@ -311,6 +325,7 @@
         window.onload = function() {
             document.getElementById('themeIcon').innerText =
                 document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+            loadSimSettings();
             calculate();
         };
     </script>

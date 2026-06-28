@@ -86,15 +86,66 @@
         </div>
     </div>
 
+    <!-- Edit Trade Modal -->
+    <div id="editModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">✏️ 修改交易紀錄</h3>
+            <input type="hidden" id="editTradeId">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">標的名稱</label>
+                    <input type="text" id="editSymbol" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">契約規格</label>
+                    <select id="editContractSize" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                        <option value="100">小型 (100股)</option>
+                        <option value="2000">標準 (2000股)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">口數</label>
+                    <input type="number" id="editQuantity" min="1" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">進場價格</label>
+                    <input type="number" id="editEntryPrice" step="0.5" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">期交所級距 (%)</label>
+                    <input type="number" id="editMarginTier" step="0.1" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">防禦倍數</label>
+                    <input type="number" id="editMarginMultiple" step="0.1" class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">出場價格 <span class="text-gray-400 font-normal">(留空 = 未平倉)</span></label>
+                    <input type="number" id="editExitPrice" step="0.5" placeholder="留空表示未平倉"
+                        class="w-full border rounded-lg p-2 bg-gray-50 focus:ring-2 focus:ring-indigo-300 outline-none">
+                </div>
+            </div>
+            <div id="editMessage" class="hidden mt-3 text-sm p-2 rounded-lg"></div>
+            <div class="flex gap-3 mt-5">
+                <button onclick="saveEditTrade()" class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition">
+                    💾 儲存變更
+                </button>
+                <button onclick="closeEditModal()" class="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition font-medium">
+                    取消
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Main App -->
     <div class="max-w-[1400px] mx-auto space-y-6">
 
         <!-- 頁面切換導覽列 -->
-        <div class="flex gap-2 bg-white rounded-xl shadow-md p-2 items-center">
-            <a href="index.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-600 hover:bg-gray-100 transition">📈 提領模擬器</a>
-            <a href="trading_journal.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold bg-indigo-500 text-white transition">📓 交易紀錄</a>
-            <a href="asset_history.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-600 hover:bg-gray-100 transition">📊 資產走勢</a>
-            <button onclick="toggleTheme()" class="p-2 px-3 rounded-lg text-gray-600 hover:bg-gray-100 transition text-xl" title="切換日夜間模式"><span id="themeIcon">🌙</span></button>
+        <div class="flex gap-1 sm:gap-2 bg-white rounded-xl shadow-md p-2 items-center">
+            <a href="index.html" class="flex-1 text-center py-2 px-1 sm:px-4 rounded-lg font-semibold text-xs sm:text-sm text-gray-600 hover:bg-gray-100 transition">📈 <span class="sm:hidden">模擬器</span><span class="hidden sm:inline">提領模擬器</span></a>
+            <a href="trading_journal.html" class="flex-1 text-center py-2 px-1 sm:px-4 rounded-lg font-semibold text-xs sm:text-sm bg-indigo-500 text-white transition">📓 <span class="sm:hidden">交易</span><span class="hidden sm:inline">交易紀錄</span></a>
+            <a href="asset_history.html" class="flex-1 text-center py-2 px-1 sm:px-4 rounded-lg font-semibold text-xs sm:text-sm text-gray-600 hover:bg-gray-100 transition">📊 <span class="sm:hidden">走勢</span><span class="hidden sm:inline">資產走勢</span></a>
+            <button onclick="toggleTheme()" class="p-2 px-2 sm:px-3 rounded-lg text-gray-600 hover:bg-gray-100 transition text-xl" title="切換日夜間模式"><span id="themeIcon">🌙</span></button>
         </div>
 
         <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-indigo-500 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -254,7 +305,7 @@
                     </thead>
                     <tbody id="tradeHistoryBody" class="divide-y divide-gray-100">
                         <tr>
-                            <td colspan="9" class="p-6 text-center text-gray-400">載入中...</td>
+                            <td colspan="10" class="p-6 text-center text-gray-400">載入中...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -272,6 +323,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('themeIcon').innerText =
                 document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+            loadSettings();
         });
 
         const SUPABASE_URL = 'https://uqbgpmnqrasvpnwvtjgo.supabase.co';
@@ -514,6 +566,7 @@
 
         // ── UI Rendering ──────────────────────────────────────
         function recalculateAll() {
+            saveSettings();
             const baseCapital      = parseFloat(document.getElementById('baseCapital').value) || 0;
             const withdrawalRate   = parseFloat(document.getElementById('baseWithdrawalRate').value) / 100 || 0;
             const feePerContract   = parseFloat(document.getElementById('feePerContract').value) || 0;
@@ -528,7 +581,7 @@
             tbody.innerHTML = '';
 
             if (trades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" class="p-6 text-center text-gray-400">目前尚無交易紀錄，請在上方新增部位。</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="p-6 text-center text-gray-400">目前尚無交易紀錄，請在上方新增部位。</td></tr>';
                 globalAvailableCapital = baseCapital;
                 updateDashboard(currentBalance, globalAvailableCapital, 0, totalWithdrawn, 0, 0);
                 return;
@@ -600,8 +653,9 @@
                         <td class="p-3 text-gray-400 text-right">-</td>
                         <td class="p-3 text-gray-400 text-right">${formatCurrency(trade.resultingBalance)}</td>
                         <td class="p-3 text-right font-bold text-orange-500">${formatCurrency(trade.totalNetWorth)}</td>
-                        <td class="p-3 text-center">
-                            <button onclick="deleteTrade('${trade.id}')" class="text-red-400 hover:text-red-600 transition">🗑️</button>
+                        <td class="p-3 text-center whitespace-nowrap">
+                            <button onclick="editTrade('${trade.id}')" class="text-indigo-400 hover:text-indigo-600 transition mr-1" title="修改">✏️</button>
+                            <button onclick="deleteTrade('${trade.id}')" class="text-red-400 hover:text-red-600 transition" title="刪除">🗑️</button>
                         </td>`;
                 } else {
                     const pnlClass    = trade.calculatedPnl > 0 ? 'text-green-600 font-bold' : (trade.calculatedPnl < 0 ? 'text-red-500 font-bold' : 'text-gray-500');
@@ -623,8 +677,9 @@
                         <td class="p-3 text-blue-600 text-right">${withdrawText}</td>
                         <td class="p-3 font-bold text-gray-800 text-right">${formatCurrency(trade.resultingBalance)}</td>
                         <td class="p-3 font-bold text-orange-500 text-right">${formatCurrency(trade.totalNetWorth)}</td>
-                        <td class="p-3 text-center">
-                            <button onclick="deleteTrade('${trade.id}')" class="text-red-400 hover:text-red-600 transition">🗑️</button>
+                        <td class="p-3 text-center whitespace-nowrap">
+                            <button onclick="editTrade('${trade.id}')" class="text-indigo-400 hover:text-indigo-600 transition mr-1" title="修改">✏️</button>
+                            <button onclick="deleteTrade('${trade.id}')" class="text-red-400 hover:text-red-600 transition" title="刪除">🗑️</button>
                         </td>`;
                 }
                 tbody.appendChild(tr);
@@ -641,6 +696,91 @@
             document.getElementById('dashTotalWithdrawn').innerText  = formatCurrency(withdrawn);
             document.getElementById('dashClosedTrades').innerText    = closedCount;
             document.getElementById('dashWinRate').innerText         = winRate.toFixed(1) + '%';
+        }
+
+        // ── Settings Persistence ──────────────────────────────
+        function saveSettings() {
+            localStorage.setItem('setting_baseCapital',    document.getElementById('baseCapital').value);
+            localStorage.setItem('setting_withdrawalRate', document.getElementById('baseWithdrawalRate').value);
+            localStorage.setItem('setting_feePerContract', document.getElementById('feePerContract').value);
+        }
+
+        function loadSettings() {
+            const cap  = localStorage.getItem('setting_baseCapital');
+            const rate = localStorage.getItem('setting_withdrawalRate');
+            const fee  = localStorage.getItem('setting_feePerContract');
+            if (cap)  document.getElementById('baseCapital').value = cap;
+            if (rate) document.getElementById('baseWithdrawalRate').value = rate;
+            if (fee)  document.getElementById('feePerContract').value = fee;
+        }
+
+        // ── Edit Trade ────────────────────────────────────────
+        function editTrade(id) {
+            const trade = trades.find(t => t.id === id);
+            if (!trade) return;
+            document.getElementById('editTradeId').value      = id;
+            document.getElementById('editSymbol').value       = trade.symbol;
+            document.getElementById('editContractSize').value = trade.contractSize;
+            document.getElementById('editQuantity').value     = trade.quantity;
+            document.getElementById('editEntryPrice').value   = trade.entryPrice;
+            document.getElementById('editMarginTier').value   = trade.marginTier;
+            document.getElementById('editMarginMultiple').value = trade.marginMultiple;
+            document.getElementById('editExitPrice').value    = trade.exitPrice !== null ? trade.exitPrice : '';
+            document.getElementById('editMessage').classList.add('hidden');
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+        }
+
+        async function saveEditTrade() {
+            const id             = document.getElementById('editTradeId').value;
+            const symbol         = document.getElementById('editSymbol').value || '未命名標的';
+            const contractSize   = parseInt(document.getElementById('editContractSize').value);
+            const quantity       = parseInt(document.getElementById('editQuantity').value);
+            const entryPrice     = parseFloat(document.getElementById('editEntryPrice').value);
+            const marginTier     = parseFloat(document.getElementById('editMarginTier').value);
+            const marginMultiple = parseFloat(document.getElementById('editMarginMultiple').value);
+            const exitStr        = document.getElementById('editExitPrice').value;
+            const exitPrice      = exitStr ? parseFloat(exitStr) : null;
+
+            if (isNaN(quantity) || isNaN(entryPrice) || isNaN(marginTier) || isNaN(marginMultiple)) {
+                showEditMsg('請填寫所有必填欄位', 'error');
+                return;
+            }
+
+            const requiredMarginPerContract = entryPrice * contractSize * (marginTier / 100) * marginMultiple;
+
+            const { error } = await db.from('trades').update({
+                symbol,
+                contract_size:   contractSize,
+                quantity,
+                entry_price:     entryPrice,
+                exit_price:      exitPrice,
+                margin_tier:     marginTier,
+                margin_multiple: marginMultiple,
+                required_margin_per_contract: requiredMarginPerContract
+            }).eq('id', id);
+
+            if (error) { showEditMsg('儲存失敗：' + error.message, 'error'); return; }
+
+            const idx = trades.findIndex(t => t.id === id);
+            if (idx !== -1) {
+                trades[idx] = { ...trades[idx], symbol, contractSize, quantity, entryPrice, exitPrice, marginTier, marginMultiple, requiredMarginPerContract };
+            }
+
+            closeEditModal();
+            recalculateAll();
+        }
+
+        function showEditMsg(text, type) {
+            const div = document.getElementById('editMessage');
+            div.innerText  = text;
+            div.className  = type === 'error'
+                ? 'text-red-500 text-sm bg-red-50 p-2 rounded-lg mt-3'
+                : 'text-green-600 text-sm bg-green-50 p-2 rounded-lg mt-3';
+            div.classList.remove('hidden');
         }
     </script>
 </body>

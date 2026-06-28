@@ -79,11 +79,11 @@
     <div class="max-w-6xl mx-auto space-y-6">
 
         <!-- 導覽列 -->
-        <div class="flex gap-2 bg-white rounded-xl shadow-md p-2 items-center">
-            <a href="index.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-600 hover:bg-gray-100 transition">📈 提領模擬器</a>
-            <a href="trading_journal.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-600 hover:bg-gray-100 transition">📓 交易紀錄</a>
-            <a href="asset_history.html" class="flex-1 text-center py-2 px-4 rounded-lg font-semibold bg-emerald-500 text-white transition">📊 資產走勢</a>
-            <button onclick="toggleTheme()" class="p-2 px-3 rounded-lg text-gray-600 hover:bg-gray-100 transition text-xl" title="切換日夜間模式"><span id="themeIcon">🌙</span></button>
+        <div class="flex gap-1 sm:gap-2 bg-white rounded-xl shadow-md p-2 items-center">
+            <a href="index.html" class="flex-1 text-center py-2 px-1 sm:px-4 rounded-lg font-semibold text-xs sm:text-sm text-gray-600 hover:bg-gray-100 transition">📈 <span class="sm:hidden">模擬器</span><span class="hidden sm:inline">提領模擬器</span></a>
+            <a href="trading_journal.html" class="flex-1 text-center py-2 px-1 sm:px-4 rounded-lg font-semibold text-xs sm:text-sm text-gray-600 hover:bg-gray-100 transition">📓 <span class="sm:hidden">交易</span><span class="hidden sm:inline">交易紀錄</span></a>
+            <a href="asset_history.html" class="flex-1 text-center py-2 px-1 sm:px-4 rounded-lg font-semibold text-xs sm:text-sm bg-emerald-500 text-white transition">📊 <span class="sm:hidden">走勢</span><span class="hidden sm:inline">資產走勢</span></a>
+            <button onclick="toggleTheme()" class="p-2 px-2 sm:px-3 rounded-lg text-gray-600 hover:bg-gray-100 transition text-xl" title="切換日夜間模式"><span id="themeIcon">🌙</span></button>
         </div>
 
         <!-- 標題 -->
@@ -193,6 +193,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('themeIcon').innerText =
                 document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+            loadSettings();
         });
 
         const SUPABASE_URL = 'https://uqbgpmnqrasvpnwvtjgo.supabase.co';
@@ -334,8 +335,25 @@
             return Math.floor(num).toLocaleString('en-US');
         }
 
+        // ── Settings Persistence ──────────────────────────────
+        function saveSettings() {
+            localStorage.setItem('setting_baseCapital',    document.getElementById('baseCapital').value);
+            localStorage.setItem('setting_withdrawalRate', document.getElementById('withdrawalRate').value);
+            localStorage.setItem('setting_feePerContract', document.getElementById('feePerContract').value);
+        }
+
+        function loadSettings() {
+            const cap  = localStorage.getItem('setting_baseCapital');
+            const rate = localStorage.getItem('setting_withdrawalRate');
+            const fee  = localStorage.getItem('setting_feePerContract');
+            if (cap)  document.getElementById('baseCapital').value = cap;
+            if (rate) document.getElementById('withdrawalRate').value = rate;
+            if (fee)  document.getElementById('feePerContract').value = fee;
+        }
+
         // ── Render ────────────────────────────────────────────
         function renderAll() {
+            saveSettings();
             const history = computeHistory();
             renderSummaryCards(history);
             renderNetWorthChart(history);
