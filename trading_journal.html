@@ -639,9 +639,10 @@
                 const { error: errUpdate } = await db.from('trades').update({ quantity: newQty }).eq('id', id);
                 if (errUpdate) { alert('更新失敗：' + errUpdate.message); return; }
 
+                const partialCount = trades.filter(t => t.symbol.startsWith(trade.symbol + ' (分批')).length;
                 const { data: newTrade, error: errInsert } = await db.from('trades').insert({
                     user_id: currentUser.id,
-                    symbol: trade.symbol + ' (分批)',
+                    symbol: `${trade.symbol} (分批 ${partialCount + 1})`,
                     contract_size: trade.contractSize,
                     quantity: closeQ,
                     entry_price: trade.entryPrice,
