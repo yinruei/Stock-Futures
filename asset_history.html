@@ -51,11 +51,13 @@
                 <h2 class="text-2xl font-black text-gray-900">佛系交易實驗室</h2>
                 <p class="text-gray-500 text-sm mt-1">登入以檢視您的資產走勢</p>
             </div>
-            <div class="flex rounded-lg bg-gray-100 p-1 mb-6">
+            <div id="authTabs" class="flex rounded-lg bg-gray-100 p-1 mb-6">
                 <button id="tabLogin" onclick="switchTab('login')" class="flex-1 py-2 rounded-md font-semibold text-sm bg-white shadow text-gray-900 transition">登入</button>
                 <button id="tabSignup" onclick="switchTab('signup')" class="flex-1 py-2 rounded-md font-semibold text-sm text-gray-500 transition">註冊新帳號</button>
             </div>
-            <div class="space-y-4">
+
+            <!-- 登入 / 註冊表單 -->
+            <div id="authForm" class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
                     <input type="email" id="authEmail" placeholder="your@email.com"
@@ -66,11 +68,54 @@
                     <input type="password" id="authPassword" placeholder="至少 6 個字元"
                         class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-emerald-300 outline-none transition"
                         onkeydown="if(event.key==='Enter') handleAuth()">
+                    <div id="forgotPasswordLink" class="text-right mt-1">
+                        <button onclick="switchTab('forgot')" class="text-sm text-emerald-600 hover:text-emerald-800 transition">忘記密碼？</button>
+                    </div>
                 </div>
                 <div id="authMessage" class="hidden text-sm p-3 rounded-lg"></div>
                 <button onclick="handleAuth()" id="authBtn"
                     class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition shadow-sm">
                     登入
+                </button>
+            </div>
+
+            <!-- 忘記密碼 -->
+            <div id="forgotSection" class="hidden space-y-4">
+                <p class="text-sm text-gray-500">輸入您的 Email，系統將寄送密碼重設連結。</p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" id="forgotEmail" placeholder="your@email.com"
+                        class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-emerald-300 outline-none transition"
+                        onkeydown="if(event.key==='Enter') sendResetEmail()">
+                </div>
+                <div id="forgotMessage" class="hidden text-sm p-3 rounded-lg"></div>
+                <button onclick="sendResetEmail()" id="forgotBtn"
+                    class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition shadow-sm">
+                    寄送重設連結
+                </button>
+                <button onclick="switchTab('login')" class="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition">
+                    ← 返回登入
+                </button>
+            </div>
+
+            <!-- 重設密碼 -->
+            <div id="resetPasswordSection" class="hidden space-y-4">
+                <p class="text-sm text-gray-500">請設定您的新密碼。</p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">新密碼</label>
+                    <input type="password" id="newPassword" placeholder="至少 6 個字元"
+                        class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-emerald-300 outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">確認新密碼</label>
+                    <input type="password" id="confirmPassword" placeholder="再輸入一次"
+                        class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-emerald-300 outline-none transition"
+                        onkeydown="if(event.key==='Enter') updatePassword()">
+                </div>
+                <div id="resetMessage" class="hidden text-sm p-3 rounded-lg"></div>
+                <button onclick="updatePassword()" id="resetBtn"
+                    class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition shadow-sm">
+                    更新密碼
                 </button>
             </div>
         </div>
@@ -210,13 +255,75 @@
         // ── Auth UI ───────────────────────────────────────────
         function switchTab(tab) {
             currentTab = tab;
-            const isLogin = tab === 'login';
-            document.getElementById('tabLogin').className =
-                `flex-1 py-2 rounded-md font-semibold text-sm transition ${isLogin ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`;
-            document.getElementById('tabSignup').className =
-                `flex-1 py-2 rounded-md font-semibold text-sm transition ${!isLogin ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`;
-            document.getElementById('authBtn').innerText = isLogin ? '登入' : '建立帳號';
+            const isLogin  = tab === 'login';
+            const isSignup = tab === 'signup';
+            const isForgot = tab === 'forgot';
+            const isReset  = tab === 'reset';
+
+            document.getElementById('authTabs').classList.toggle('hidden', isForgot || isReset);
+            document.getElementById('tabLogin').className  = `flex-1 py-2 rounded-md font-semibold text-sm transition ${isLogin  ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`;
+            document.getElementById('tabSignup').className = `flex-1 py-2 rounded-md font-semibold text-sm transition ${isSignup ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`;
+
+            document.getElementById('authForm').classList.toggle('hidden', isForgot || isReset);
+            document.getElementById('forgotPasswordLink').classList.toggle('hidden', !isLogin);
+            document.getElementById('forgotSection').classList.toggle('hidden', !isForgot);
+            document.getElementById('resetPasswordSection').classList.toggle('hidden', !isReset);
+
+            if (!isForgot && !isReset) {
+                document.getElementById('authBtn').innerText = isLogin ? '登入' : '建立帳號';
+            }
             document.getElementById('authMessage').classList.add('hidden');
+        }
+
+        async function sendResetEmail() {
+            const email = document.getElementById('forgotEmail').value.trim();
+            if (!email) { showForgotMsg('請輸入 Email', 'error'); return; }
+            const btn = document.getElementById('forgotBtn');
+            btn.disabled = true; btn.innerText = '寄送中...';
+            const { error } = await db.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin + window.location.pathname
+            });
+            btn.disabled = false; btn.innerText = '寄送重設連結';
+            if (error) {
+                showForgotMsg('寄送失敗：' + error.message, 'error');
+            } else {
+                showForgotMsg('重設連結已寄出！請檢查您的 Email（含垃圾信件夾）。', 'success');
+            }
+        }
+
+        function showForgotMsg(text, type) {
+            const div = document.getElementById('forgotMessage');
+            div.innerText = text;
+            div.className = type === 'error'
+                ? 'text-red-500 text-sm bg-red-50 p-3 rounded-lg'
+                : 'text-green-600 text-sm bg-green-50 p-3 rounded-lg';
+            div.classList.remove('hidden');
+        }
+
+        async function updatePassword() {
+            const newPwd     = document.getElementById('newPassword').value;
+            const confirmPwd = document.getElementById('confirmPassword').value;
+            if (newPwd.length < 6)     { showResetMsg('密碼至少需要 6 個字元', 'error'); return; }
+            if (newPwd !== confirmPwd) { showResetMsg('兩次輸入的密碼不一致', 'error'); return; }
+            const btn = document.getElementById('resetBtn');
+            btn.disabled = true; btn.innerText = '更新中...';
+            const { error } = await db.auth.updateUser({ password: newPwd });
+            btn.disabled = false; btn.innerText = '更新密碼';
+            if (error) {
+                showResetMsg('更新失敗：' + error.message, 'error');
+            } else {
+                showResetMsg('✅ 密碼更新成功！', 'success');
+                setTimeout(() => { document.getElementById('authModal').classList.add('hidden'); }, 1500);
+            }
+        }
+
+        function showResetMsg(text, type) {
+            const div = document.getElementById('resetMessage');
+            div.innerText = text;
+            div.className = type === 'error'
+                ? 'text-red-500 text-sm bg-red-50 p-3 rounded-lg'
+                : 'text-green-600 text-sm bg-green-50 p-3 rounded-lg';
+            div.classList.remove('hidden');
         }
 
         async function handleAuth() {
@@ -255,6 +362,11 @@
         async function signOut() { await db.auth.signOut(); }
 
         db.auth.onAuthStateChange((event, session) => {
+            if (event === 'PASSWORD_RECOVERY') {
+                document.getElementById('authModal').classList.remove('hidden');
+                switchTab('reset');
+                return;
+            }
             if (session && session.user) {
                 currentUser = session.user;
                 document.getElementById('authModal').classList.add('hidden');
