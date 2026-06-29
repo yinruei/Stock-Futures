@@ -240,7 +240,7 @@
         </div>
 
         <!-- Dashboard Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div class="bg-white rounded-xl shadow-sm p-5 border-b-4 border-green-500">
                 <div class="text-gray-500 text-sm font-bold mb-1">📈 帳戶總餘額 (總淨值)</div>
                 <div class="text-3xl font-black text-gray-800" id="dashAccountBalance">300,000</div>
@@ -261,6 +261,14 @@
                 <div class="text-3xl font-black text-gray-800">
                     <span id="dashWinRate">0.0%</span>
                     <span class="text-lg text-gray-400 font-medium">/ <span id="dashClosedTrades">0</span> 單</span>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-5 border-b-4 border-purple-500">
+                <div class="text-gray-500 text-sm font-bold mb-1">⚖️ 盈虧比</div>
+                <div class="text-3xl font-black text-purple-600" id="dashPnlRatio">--</div>
+                <div class="mt-1 text-xs text-gray-500">
+                    均獲 <span id="dashAvgWin" class="text-green-600 font-semibold">--</span> ／
+                    均虧 <span id="dashAvgLoss" class="text-red-500 font-semibold">--</span>
                 </div>
             </div>
         </div>
@@ -733,6 +741,9 @@
             let winCount          = 0;
             let closedCount       = 0;
             let totalLockedMargin = 0;
+            let totalWinPnl       = 0;
+            let totalLossPnl      = 0;
+            let lossCount         = 0;
 
             const tbody = document.getElementById('tradeHistoryBody');
             tbody.innerHTML = '';
@@ -740,6 +751,9 @@
             if (trades.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="10" class="p-6 text-center text-gray-400">目前尚無交易紀錄，請在上方新增部位。</td></tr>';
                 globalAvailableCapital = baseCapital;
+                document.getElementById('dashPnlRatio').innerText = '--';
+                document.getElementById('dashAvgWin').innerText   = '--';
+                document.getElementById('dashAvgLoss').innerText  = '--';
                 updateDashboard(currentBalance, globalAvailableCapital, 0, totalWithdrawn, 0, 0);
                 return;
             }
@@ -754,7 +768,8 @@
                     const fee      = feePerContract * trade.quantity;
                     const pnl      = grossPnl - fee;
                     let withdrawn = 0;
-                    if (pnl > 0) { withdrawn = pnl * withdrawalRate; winCount++; }
+                    if (pnl > 0) { withdrawn = pnl * withdrawalRate; winCount++; totalWinPnl += pnl; }
+                    else if (pnl < 0) { lossCount++; totalLossPnl += pnl; }
                     currentBalance += pnl - withdrawn;
                     totalWithdrawn += withdrawn;
                     trade.calculatedPnl       = pnl;
@@ -860,7 +875,13 @@
                 tbody.appendChild(tr);
             });
 
-            const winRate = closedCount > 0 ? (winCount / closedCount) * 100 : 0;
+            const winRate  = closedCount > 0 ? (winCount / closedCount) * 100 : 0;
+            const avgWin   = winCount  > 0 ? totalWinPnl / winCount : 0;
+            const avgLoss  = lossCount > 0 ? Math.abs(totalLossPnl / lossCount) : 0;
+            const pnlRatio = avgLoss   > 0 ? avgWin / avgLoss : null;
+            document.getElementById('dashPnlRatio').innerText = pnlRatio !== null ? pnlRatio.toFixed(2) + 'x' : '--';
+            document.getElementById('dashAvgWin').innerText   = winCount  > 0 ? formatCurrency(avgWin)  : '--';
+            document.getElementById('dashAvgLoss').innerText  = lossCount > 0 ? formatCurrency(avgLoss) : '--';
             updateDashboard(currentBalance, globalAvailableCapital, totalLockedMargin, totalWithdrawn, closedCount, winRate);
         }
 

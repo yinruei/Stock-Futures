@@ -202,6 +202,15 @@
             </div>
         </div>
 
+        <!-- 月度損益統計 -->
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h2 class="text-lg font-semibold mb-1 border-b pb-2">📅 月度損益統計</h2>
+            <p class="text-xs text-gray-400 mb-4">按月份統計損益總和，綠色為盈利月份、紅色為虧損月份</p>
+            <div class="relative h-64 w-full">
+                <canvas id="monthlyChart"></canvas>
+            </div>
+        </div>
+
         <!-- 歷史紀錄表 -->
         <div class="bg-white rounded-xl shadow-md p-6 overflow-hidden">
             <h2 class="text-lg font-semibold mb-4 border-b pb-2">📋 資產變化紀錄</h2>
@@ -251,6 +260,7 @@
         let currentTab = 'login';
         let netWorthChart = null;
         let pnlChart = null;
+        let monthlyChart = null;
 
         // ── Auth UI ───────────────────────────────────────────
         function switchTab(tab) {
@@ -396,7 +406,8 @@
                 exitPrice: t.exit_price,
                 marginTier: t.margin_tier,
                 marginMultiple: t.margin_multiple,
-                isShort: t.is_short || false
+                isShort: t.is_short || false,
+                createdAt: t.created_at
             }));
 
             renderAll();
@@ -467,12 +478,87 @@
         }
 
         // ── Render ────────────────────────────────────────────
+        function computeMonthly() {
+            const feePerContract = parseFloat(document.getElementById('feePerContract').value) || 0;
+            const monthMap = {};
+
+            trades
+                .filter(t => t.exitPrice !== null && !isNaN(t.exitPrice))
+                .forEach(t => {
+                    const month = t.createdAt ? t.createdAt.substring(0, 7) : '未知';
+                    const grossPnl = t.isShort
+                        ? (t.entryPrice - t.exitPrice) * t.contractSize * t.quantity
+                        : (t.exitPrice - t.entryPrice) * t.contractSize * t.quantity;
+                    const pnl = grossPnl - feePerContract * t.quantity;
+
+                    if (!monthMap[month]) monthMap[month] = { pnl: 0, count: 0, wins: 0 };
+                    monthMap[month].pnl += pnl;
+                    monthMap[month].count++;
+                    if (pnl > 0) monthMap[month].wins++;
+                });
+
+            return Object.entries(monthMap)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([month, d]) => ({ month, ...d }));
+        }
+
+        function renderMonthlyChart(monthly) {
+            if (monthlyChart) monthlyChart.destroy();
+            if (monthly.length === 0) return;
+
+            const labels = monthly.map(m => m.month);
+            const pnls   = monthly.map(m => m.pnl);
+            const colors = pnls.map(v => v >= 0 ? 'rgba(34, 197, 94, 0.8)' : 'rgba(239, 68, 68, 0.8)');
+
+            const ctx = document.getElementById('monthlyChart').getContext('2d');
+            monthlyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: '月度損益',
+                        data: pnls,
+                        backgroundColor: colors,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const v = ctx.raw;
+                                    return ` ${v >= 0 ? '+' : ''}$${formatCurrency(v)}`;
+                                },
+                                afterLabel: ctx => {
+                                    const m = monthly[ctx.dataIndex];
+                                    return ` 共 ${m.count} 筆 | 獲利 ${m.wins} 筆`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: v => (v >= 0 ? '+' : '') + (Math.abs(v) >= 10000 ? (v / 10000).toFixed(1) + '萬' : v)
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         function renderAll() {
             saveSettings();
             const history = computeHistory();
+            const monthly = computeMonthly();
             renderSummaryCards(history);
             renderNetWorthChart(history);
             renderPnlChart(history);
+            renderMonthlyChart(monthly);
             renderTable(history);
         }
 
