@@ -1,0 +1,17 @@
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/scraper/compare_data.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=300"
+
+[[headers]]
+  for = "/scraper/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=300"

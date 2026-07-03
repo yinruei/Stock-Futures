@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# 個別策略 JSON（60 個，共 ~40MB；由 batch_scrape.py 重新產生）
+scraper/*_data.json
+!scraper/compare_data.json
+scraper/*.csv
+
+# 舊格式
+scraper/compare_data.js
+
+# 暫存
+scraper/scrape_log.txt

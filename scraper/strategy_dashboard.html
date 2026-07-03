@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>策略績效儀表板</title>
+    <script>(function(){const t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark');})()</script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, '微軟正黑體', sans-serif; }
+        html.dark body { background-color: #0f172a; color: #e2e8f0; }
+        html.dark .bg-white { background-color: #1e293b !important; }
+        html.dark .bg-gray-50 { background-color: #1e293b !important; }
+        html.dark .bg-gray-100 { background-color: #0f172a !important; }
+        html.dark .text-gray-900 { color: #f1f5f9 !important; }
+        html.dark .text-gray-800 { color: #e2e8f0 !important; }
+        html.dark .text-gray-700 { color: #cbd5e1 !important; }
+        html.dark .text-gray-600 { color: #94a3b8 !important; }
+        html.dark .text-gray-500 { color: #64748b !important; }
+        html.dark .border, html.dark .border-b, html.dark .border-t { border-color: #334155 !important; }
+        html.dark [class*="divide-"] > * { border-color: #334155 !important; }
+        html.dark .shadow-md, html.dark .shadow-sm { box-shadow: 0 4px 24px rgba(0,0,0,0.5) !important; }
+        html.dark .hover\:bg-gray-50:hover { background-color: #334155 !important; }
+        .drop-zone { border: 2px dashed #94a3b8; transition: all 0.2s; }
+        .drop-zone.drag-over { border-color: #6366f1; background: rgba(99,102,241,0.05); }
+        html.dark .drop-zone { border-color: #475569; }
+        html.dark .drop-zone.drag-over { border-color: #818cf8; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+
+<!-- 頁首 -->
+<div class="bg-white shadow-sm border-b sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <a href="strategy_compare.html" class="text-gray-400 hover:text-purple-600 text-sm transition">📋 比較評估</a>
+            <span class="text-gray-300">|</span>
+            <span class="text-2xl">📊</span>
+            <div>
+                <h1 class="text-lg font-black text-gray-900" id="headerTitle">策略績效儀表板</h1>
+                <p class="text-xs text-gray-500" id="headerSubtitle">載入 JSON 檔案以查看分析結果</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <span id="dateRange" class="text-xs text-gray-400 hidden"></span>
+            <div class="flex items-center gap-2">
+                <button id="backToCompareBtn" onclick="backToCompare()" class="hidden text-xs px-3 py-1.5 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-lg transition">← 返回比較表</button>
+                <button onclick="backToUpload()" class="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-lg transition" id="backToUploadBtn" style="display:none">← 重新載入</button>
+                <button onclick="toggleTheme()" class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition text-xl" title="切換模式">
+                    <span id="themeIcon">🌙</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 上傳區 -->
+<div id="uploadSection" class="max-w-3xl mx-auto mt-16 px-4">
+    <div class="grid grid-cols-2 gap-4 mb-4">
+        <!-- 單一策略 -->
+        <div class="drop-zone bg-white rounded-2xl shadow-md p-8 text-center cursor-pointer"
+             id="dropZone"
+             onclick="document.getElementById('fileInput').click()"
+             ondragover="handleDragOver(event)"
+             ondragleave="handleDragLeave(event)"
+             ondrop="handleDrop(event)">
+            <div class="text-4xl mb-3">📊</div>
+            <h2 class="text-base font-bold text-gray-800 mb-1">單一策略分析</h2>
+            <p class="text-gray-500 text-sm mb-4">拖曳或選擇一個 JSON 檔案</p>
+            <div class="inline-block px-4 py-1.5 bg-indigo-600 text-white font-semibold rounded-lg text-sm">
+                選擇 JSON
+            </div>
+        </div>
+        <!-- 多策略比較 -->
+        <div class="drop-zone bg-white rounded-2xl shadow-md p-8 text-center cursor-pointer"
+             id="dropZoneCompare"
+             onclick="document.getElementById('fileInputCompare').click()"
+             ondragover="handleDragOver(event)"
+             ondragleave="handleDragLeaveCompare(event)"
+             ondrop="handleDropCompare(event)">
+            <div class="text-4xl mb-3">📋</div>
+            <h2 class="text-base font-bold text-gray-800 mb-1">多策略比較</h2>
+            <p class="text-gray-500 text-sm mb-4">拖曳或選擇多個 JSON 檔案</p>
+            <div class="inline-block px-4 py-1.5 bg-purple-600 text-white font-semibold rounded-lg text-sm">
+                選擇多個 JSON
+            </div>
+        </div>
+    </div>
+    <p class="text-center text-xs text-gray-400">由 strategy_scraper.py 或 batch_scrape.py 產生的 *_data.json 檔案</p>
+    <input type="file" id="fileInput" accept=".json" class="hidden" onchange="loadFile(event)">
+    <input type="file" id="fileInputCompare" accept=".json" multiple class="hidden" onchange="loadCompare(event)">
+    <div id="uploadError" class="hidden mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm text-center"></div>
+</div>
+
+<!-- 多策略比較表（載入後顯示）-->
+<div id="compareSection" class="hidden max-w-7xl mx-auto px-4 py-6">
+    <div class="bg-white rounded-xl shadow-md p-6 overflow-hidden">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <div>
+                <h3 class="text-base font-bold text-gray-800">📋 策略比較表</h3>
+                <p class="text-xs text-gray-400 mt-0.5" id="compareDateRange">—</p>
+            </div>
+            <button onclick="closeCompare()" class="text-xs text-gray-400 hover:text-gray-600 px-3 py-1 border rounded-lg">✕ 關閉</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm text-right">
+                <thead class="bg-gray-50 text-gray-600 border-b text-xs">
+                    <tr>
+                        <th class="p-3 text-left">策略代碼</th>
+                        <th class="p-3 text-left">策略名稱</th>
+                        <th class="p-3">淨報酬率</th>
+                        <th class="p-3">淨報酬（點）</th>
+                        <th class="p-3">總報酬（點）</th>
+                        <th class="p-3">最大回撤</th>
+                        <th class="p-3">風報比</th>
+                        <th class="p-3">勝率</th>
+                        <th class="p-3">獲利因子</th>
+                        <th class="p-3">賺賠比</th>
+                        <th class="p-3">交易次數</th>
+                        <th class="p-3 text-left">查看</th>
+                    </tr>
+                </thead>
+                <tbody id="compareTableBody" class="divide-y divide-gray-100"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 主要儀表板（載入後顯示）-->
+<div id="dashboard" class="hidden max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- 策略資訊列 -->
+    <div class="bg-white rounded-xl shadow-md p-5 border-l-4 border-indigo-500">
+        <div class="flex flex-wrap gap-6 items-start justify-between">
+            <div>
+                <h2 class="text-xl font-black text-gray-900" id="strategyName">—</h2>
+                <div class="flex flex-wrap gap-3 mt-2">
+                    <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full font-semibold" id="tradeStyleBadge">—</span>
+                    <span class="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full font-semibold" id="productBadge">—</span>
+                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full" id="costBadge">—</span>
+                </div>
+            </div>
+            <div class="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg max-w-lg leading-relaxed" id="strategyDesc">—</div>
+        </div>
+    </div>
+
+    <!-- 統計卡片 3×4 -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <!-- Row 1：報酬 / 成本 -->
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-orange-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">💰 總報酬（同網站）</div>
+            <div class="text-2xl font-black" id="cardTotalPnl">—</div>
+            <div class="text-xs text-gray-400 mt-1" id="cardFloating">—</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-green-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">💵 淨報酬（點數）</div>
+            <div class="text-2xl font-black" id="cardNetPnl">—</div>
+            <div class="text-xs text-gray-400 mt-1">含浮動損益，已扣成本</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-gray-400">
+            <div class="text-gray-500 text-xs font-bold mb-1">💸 交易成本（點數）</div>
+            <div class="text-2xl font-black text-gray-500" id="cardCost">—</div>
+            <div class="text-xs text-gray-400 mt-1" id="cardCostPer">—</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-blue-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">📊 期望值/筆</div>
+            <div class="text-2xl font-black" id="cardExpected">—</div>
+            <div class="text-xs text-gray-400 mt-1">點/交易</div>
+        </div>
+        <!-- Row 2：回撤 / 風險 -->
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-red-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">📉 最大回撤（點數）</div>
+            <div class="text-2xl font-black text-red-500" id="cardDrawdown">—</div>
+            <div class="text-xs text-gray-400 mt-1" id="cardDrawdownPct">佔高峰 —%</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-rose-400">
+            <div class="text-gray-500 text-xs font-bold mb-1">🔻 最大策略虧損（同網站）</div>
+            <div class="text-2xl font-black text-rose-500" id="cardMaxLoss">—</div>
+            <div class="text-xs text-gray-400 mt-1" id="cardMaxLossPct">佔建議資金 —%</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-teal-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">⚡ 風報比</div>
+            <div class="text-2xl font-black" id="cardRiskReward">—</div>
+            <div class="text-xs text-gray-400 mt-1">淨報酬 ÷ 最大回撤</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-cyan-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">📈 淨報酬率（同網站）</div>
+            <div class="text-2xl font-black" id="cardNetRate">—</div>
+            <div class="text-xs text-gray-400 mt-1" id="cardNetRateNote">淨報酬 × 每點金額 ÷ 建議資金</div>
+        </div>
+        <!-- Row 3：績效 / 評分 -->
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-blue-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">🎯 勝率</div>
+            <div class="text-2xl font-black text-blue-600" id="cardWinRate">—</div>
+            <div class="text-xs text-gray-400 mt-1" id="cardTradeCount">—</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-green-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">⚡ 獲利因子</div>
+            <div class="text-2xl font-black" id="cardProfitFactor">—</div>
+            <div class="text-xs text-gray-400 mt-1">總獲利 / 總虧損</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-purple-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">⚖️ 賺賠比</div>
+            <div class="text-2xl font-black text-purple-600" id="cardPnlRatio">—</div>
+            <div class="text-xs text-gray-400 mt-1" id="cardAvgWinLoss">—</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 border-indigo-500">
+            <div class="text-gray-500 text-xs font-bold mb-1">🏆 總評分</div>
+            <div class="text-2xl font-black" id="cardScore">—</div>
+            <div class="text-xs font-bold mt-1" id="cardScoreGrade">—</div>
+        </div>
+    </div>
+
+    <!-- 累積損益圖 -->
+    <div class="bg-white rounded-xl shadow-md p-6">
+        <h3 class="text-base font-bold text-gray-800 mb-1 border-b pb-2">📈 累積損益曲線</h3>
+        <p class="text-xs text-gray-400 mb-4">每日累積損益（點），水平線為損益平衡點</p>
+        <div class="relative h-72 w-full">
+            <canvas id="cumPnlChart"></canvas>
+        </div>
+    </div>
+
+    <!-- 月度 + 勝敗 並排 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="bg-white rounded-xl shadow-md p-6 lg:col-span-2">
+            <h3 class="text-base font-bold text-gray-800 mb-1 border-b pb-2">📅 月度損益</h3>
+            <p class="text-xs text-gray-400 mb-4">每月損益合計，綠色盈利 / 紅色虧損</p>
+            <div class="relative h-56 w-full">
+                <canvas id="monthlyChart"></canvas>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-md p-6">
+            <h3 class="text-base font-bold text-gray-800 mb-1 border-b pb-2">🥧 勝敗分佈</h3>
+            <p class="text-xs text-gray-400 mb-4">獲利 vs 虧損筆數</p>
+            <div class="relative h-56 w-full flex items-center justify-center">
+                <canvas id="winLossChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 每筆交易損益分佈 -->
+    <div class="bg-white rounded-xl shadow-md p-6">
+        <h3 class="text-base font-bold text-gray-800 mb-1 border-b pb-2">📊 每筆交易損益分佈</h3>
+        <p class="text-xs text-gray-400 mb-4">每筆交易的淨損益（點），綠色獲利 / 紅色虧損</p>
+        <div class="relative h-52 w-full">
+            <canvas id="tradeDistChart"></canvas>
+        </div>
+    </div>
+
+    <!-- 交易明細表 -->
+    <div class="bg-white rounded-xl shadow-md p-6 overflow-hidden">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h3 class="text-base font-bold text-gray-800">📋 交易明細</h3>
+            <div class="flex gap-2 items-center">
+                <select id="dirFilter" onchange="renderTable()" class="text-xs border rounded-lg px-2 py-1 bg-gray-50 text-gray-700">
+                    <option value="all">全部方向</option>
+                    <option value="多">多單</option>
+                    <option value="空">空單</option>
+                </select>
+                <select id="resultFilter" onchange="renderTable()" class="text-xs border rounded-lg px-2 py-1 bg-gray-50 text-gray-700">
+                    <option value="all">全部結果</option>
+                    <option value="win">獲利</option>
+                    <option value="loss">虧損</option>
+                </select>
+                <span class="text-xs text-gray-400" id="tableCount"></span>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm text-right">
+                <thead class="bg-gray-50 text-gray-600 border-b text-xs">
+                    <tr>
+                        <th class="p-3 text-left">#</th>
+                        <th class="p-3 text-left">日期</th>
+                        <th class="p-3 text-center">方向</th>
+                        <th class="p-3">開倉價</th>
+                        <th class="p-3">平倉價</th>
+                        <th class="p-3">原始損益（元）</th>
+                        <th class="p-3">淨損益（元，含成本）</th>
+                    </tr>
+                </thead>
+                <tbody id="tradeTableBody" class="divide-y divide-gray-100"></tbody>
+            </table>
+        </div>
+        <div class="flex justify-between items-center mt-4 pt-3 border-t">
+            <button onclick="changePage(-1)" id="prevBtn" class="px-4 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition disabled:opacity-40">← 上一頁</button>
+            <span class="text-sm text-gray-500" id="pageInfo">—</span>
+            <button onclick="changePage(1)" id="nextBtn" class="px-4 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition disabled:opacity-40">下一頁 →</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // ── 總評分 ────────────────────────────────────────────────────────────
+    function computeScore(s, totalPnl, netPnl) {
+        let score = 0;
+
+        // 風報比（25 pts）：總報酬 ÷ 最大回撤
+        const rr = s.max_drawdown_points > 0 ? totalPnl / s.max_drawdown_points : 0;
+        score += rr >= 5 ? 25 : rr >= 3 ? 20 : rr >= 2 ? 15 : rr >= 1 ? 10 : rr > 0 ? 5 : 0;
+
+        // 勝率（20 pts）
+        const wr = s.win_rate_pct;
+        score += wr >= 60 ? 20 : wr >= 50 ? 15 : wr >= 40 ? 10 : 5;
+
+        // 獲利因子（20 pts）
+        const pf = s.profit_factor;
+        score += pf >= 2.0 ? 20 : pf >= 1.5 ? 15 : pf >= 1.2 ? 10 : pf >= 1.0 ? 5 : 0;
+
+        // 賺賠比（20 pts）
+        const pr = s.pnl_ratio;
+        score += pr >= 2.0 ? 20 : pr >= 1.5 ? 15 : pr >= 1.0 ? 10 : 5;
+
+        // 期望值/筆（15 pts）
+        const exp = s.total_trades > 0 ? netPnl / s.total_trades : 0;
+        score += exp >= 100 ? 15 : exp >= 50 ? 12 : exp >= 20 ? 9 : exp >= 0 ? 5 : 0;
+
+        return Math.round(score);
+    }
+
+    function getScoreGrade(score) {
+        if (score >= 85) return { label: 'S　頂尖策略', color: 'text-yellow-500' };
+        if (score >= 70) return { label: 'A　優秀策略', color: 'text-green-600' };
+        if (score >= 55) return { label: 'B　良好策略', color: 'text-blue-600' };
+        if (score >= 40) return { label: 'C　普通策略', color: 'text-gray-500' };
+        return { label: 'D　偏弱策略', color: 'text-red-500' };
+    }
+
+    // ── Theme ─────────────────────────────────────────────────────────────
+    function toggleTheme() {
+        const isDark = document.documentElement.classList.toggle('dark');
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        document.getElementById('themeIcon').innerText = isDark ? '☀️' : '🌙';
+        if (currentData) renderCharts(currentData);
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('themeIcon').innerText =
+            document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+    });
+
+    // ── File Loading ──────────────────────────────────────────────────────
+    let currentData = null;
+    let currentPage = 1;
+    let currentTickValue = 1;   // 每點金額（TWD），載入後從商品資料取得
+    const PAGE_SIZE = 20;
+    let charts = {};
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        document.getElementById('dropZone').classList.add('drag-over');
+    }
+    function handleDragLeave(e) {
+        document.getElementById('dropZone').classList.remove('drag-over');
+    }
+    function handleDrop(e) {
+        e.preventDefault();
+        document.getElementById('dropZone').classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file) readFile(file);
+    }
+    function loadFile(e) {
+        const file = e.target.files[0];
+        if (file) readFile(file);
+    }
+
+    // ── 多策略比較 ─────────────────────────────────────────────────────────
+    function handleDragLeaveCompare(e) {
+        document.getElementById('dropZoneCompare').classList.remove('drag-over');
+    }
+    function handleDropCompare(e) {
+        e.preventDefault();
+        document.getElementById('dropZoneCompare').classList.remove('drag-over');
+        if (e.dataTransfer.files.length) loadCompareFiles(e.dataTransfer.files);
+    }
+    function loadCompare(e) {
+        if (e.target.files.length) loadCompareFiles(e.target.files);
+    }
+
+    const PRODUCT_CAPITAL_COMPARE = { 'TAIFEX_TMF': 222600, 'TAIFEX_MXF': 222600, 'TAIFEX_TXF': 2113500 };
+
+    function loadCompareFiles(files) {
+        const readers = [];
+        let loaded = 0;
+        const results = [];
+
+        Array.from(files).forEach((file, i) => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                try {
+                    const d = JSON.parse(e.target.result);
+                    if (d.info && d.stats) results[i] = d;
+                } catch(err) {}
+                loaded++;
+                if (loaded === files.length) renderCompare(results.filter(Boolean));
+            };
+            reader.readAsText(file, 'utf-8');
+        });
+    }
+
+    function renderCompare(datasets) {
+        if (!datasets.length) return;
+        _compareDatasets = datasets;
+        document.getElementById('uploadSection').classList.add('hidden');
+        document.getElementById('compareSection').classList.remove('hidden');
+
+        const dateRanges = [...new Set(datasets.map(d => `${d.begin_date} ～ ${d.end_date}`))];
+        document.getElementById('compareDateRange').textContent = dateRanges.join(' / ');
+
+        const tbody = document.getElementById('compareTableBody');
+        tbody.innerHTML = '';
+
+        datasets.sort((a, b) => {
+            const netA = (a.stats.net_closed_pnl + (a.stats.floating_pnl ?? 0));
+            const netB = (b.stats.net_closed_pnl + (b.stats.floating_pnl ?? 0));
+            return netB - netA;
+        });
+
+        datasets.forEach(d => {
+            const s = d.stats;
+            const product = (d.info?.products ?? []).find(p => p.tick_value) ?? {};
+            const tv = product.tick_value ?? 1;
+            const cap = d.info?.suggested_capital ?? PRODUCT_CAPITAL_COMPARE[product.code] ?? null;
+            const netPnl = (s.net_closed_pnl ?? 0) + (s.floating_pnl ?? 0);
+            const rr = s.max_drawdown_points > 0 ? (netPnl / s.max_drawdown_points).toFixed(2) : '∞';
+            const netRate = cap ? (netPnl * tv / cap * 100).toFixed(2) + '%' : '—';
+
+            const isPos = netPnl >= 0;
+            const rrNum = parseFloat(rr);
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50 transition border-b border-gray-100 cursor-pointer';
+            tr.onclick = () => { readFileData(d); };
+            tr.innerHTML = `
+                <td class="p-3 text-left text-indigo-600 font-mono text-xs">${d.strategy_code}</td>
+                <td class="p-3 text-left text-gray-700 text-xs">${d.strategy_name ?? d.info.name ?? '—'}</td>
+                <td class="p-3 font-bold ${isPos ? 'text-green-600' : 'text-red-500'}">${netRate}</td>
+                <td class="p-3 ${isPos ? 'text-green-600' : 'text-red-500'}">${fmtNum(netPnl)}</td>
+                <td class="p-3 text-gray-700">${fmtNum(s.website_total_pnl ?? 0)}</td>
+                <td class="p-3 text-red-500">-${s.max_drawdown_points.toLocaleString()}</td>
+                <td class="p-3 ${rrNum >= 3 ? 'text-green-600' : rrNum >= 1 ? 'text-yellow-600' : 'text-red-500'} font-bold">${rr}x</td>
+                <td class="p-3">${s.win_rate_pct}%</td>
+                <td class="p-3">${s.profit_factor}</td>
+                <td class="p-3">${s.pnl_ratio}x</td>
+                <td class="p-3 text-gray-500">${s.total_trades}</td>
+                <td class="p-3 text-left"><button class="text-xs text-indigo-500 hover:underline">詳情</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function readFileData(d) {
+        currentData = d;
+        document.getElementById('compareSection').classList.add('hidden');
+        renderDashboard(d);
+    }
+
+    function closeCompare() {
+        document.getElementById('compareSection').classList.add('hidden');
+        document.getElementById('uploadSection').classList.remove('hidden');
+        document.getElementById('fileInputCompare').value = '';
+    }
+    function readFile(file) {
+        if (!file.name.endsWith('.json')) {
+            showError('請選擇 .json 檔案');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const data = JSON.parse(e.target.result);
+                if (!data.info || !data.stats || !data.daily_pnl) {
+                    showError('檔案格式不符，請使用 strategy_scraper.py 產生的 JSON 檔案');
+                    return;
+                }
+                currentData = data;
+                try {
+                    renderDashboard(data);
+                } catch(err) {
+                    showError('渲染失敗：' + err.message);
+                    console.error(err);
+                }
+            } catch(err) {
+                showError('JSON 解析失敗：' + err.message);
+            }
+        };
+        reader.readAsText(file, 'utf-8');
+    }
+    function showError(msg) {
+        const el = document.getElementById('uploadError');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    }
+
+    // ── Render Dashboard ──────────────────────────────────────────────────
+    const TRADE_STYLES = { N: '複合策略', D: '當沖', T: '波段', C: '複合', F: '當沖(Fast)', L: '波段(Long)' };
+
+    function fmtDate(d) {
+        return `${d.substring(0,4)}-${d.substring(4,6)}-${d.substring(6,8)}`;
+    }
+    function fmtNum(n) {
+        return n >= 0 ? `+${n.toLocaleString()}` : n.toLocaleString();
+    }
+
+    let _compareDatasets = null;   // 記住比較表資料以便返回
+
+    function backToUpload() {
+        document.getElementById('dashboard').classList.add('hidden');
+        document.getElementById('uploadSection').classList.remove('hidden');
+        document.getElementById('backToUploadBtn').style.display = 'none';
+        document.getElementById('backToCompareBtn').classList.add('hidden');
+    }
+    function backToCompare() {
+        document.getElementById('dashboard').classList.add('hidden');
+        document.getElementById('backToCompareBtn').classList.add('hidden');
+        if (_compareDatasets) {
+            document.getElementById('compareSection').classList.remove('hidden');
+        } else {
+            document.getElementById('uploadSection').classList.remove('hidden');
+        }
+    }
+
+    function renderDashboard(d) {
+        document.getElementById('uploadSection').classList.add('hidden');
+        document.getElementById('compareSection').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        document.getElementById('backToUploadBtn').style.display = 'inline-block';
+        if (_compareDatasets) document.getElementById('backToCompareBtn').classList.remove('hidden');
+
+        // 頁首
+        document.getElementById('headerTitle').textContent = d.info.name;
+        document.getElementById('headerSubtitle').textContent = `${d.begin_date} ～ ${d.end_date}`;
+        document.getElementById('dateRange').textContent = `${d.begin_date} ～ ${d.end_date}`;
+        document.getElementById('dateRange').classList.remove('hidden');
+
+        // 策略資訊
+        document.getElementById('strategyName').textContent = d.info.name;
+        document.getElementById('tradeStyleBadge').textContent =
+            TRADE_STYLES[d.info.trade_style] || d.info.trade_style;
+        const prod = d.info.products?.[0];
+        document.getElementById('productBadge').textContent =
+            prod ? `${prod.name}  現價 ${prod.price?.toLocaleString() ?? '—'}` : '—';
+        document.getElementById('costBadge').textContent =
+            `成本 ${d.info.cost_points} 點/口`;
+        document.getElementById('strategyDesc').textContent =
+            (d.info.description || []).join(' ').substring(0, 200) + '...';
+
+        // 統計卡片
+        const s = d.stats;
+        // 相容新舊欄位名稱
+        const totalPnl     = s.website_total_pnl ?? s.total_pnl_points ?? 0;
+        const netClosedPnl = s.net_closed_pnl   ?? s.total_pnl_points ?? 0;
+        const floating     = s.floating_pnl ?? 0;
+        // IBFF 淨報酬 = 平倉淨損益 + 浮動損益（含未平倉）
+        const netPnl = netClosedPnl + floating;
+        const openPos  = s.open_positions ?? [];
+
+        // 💰 總報酬
+        const totalEl = document.getElementById('cardTotalPnl');
+        totalEl.textContent = fmtNum(totalPnl);
+        totalEl.className = 'text-2xl font-black ' + (totalPnl >= 0 ? 'text-green-600' : 'text-red-500');
+        document.getElementById('cardFloating').textContent =
+            openPos.length > 0
+                ? `浮動 ${floating >= 0 ? '+' : ''}${floating}（${openPos.length} 口未平倉）`
+                : '已全部平倉';
+
+        // 💵 淨報酬
+        const netEl = document.getElementById('cardNetPnl');
+        netEl.textContent = fmtNum(netPnl);
+        netEl.className = 'text-2xl font-black ' + (netPnl >= 0 ? 'text-green-600' : 'text-red-500');
+
+        const product = (d.info?.products ?? []).find(p => p.tick_value) ?? {};
+        const tickValue = product.tick_value ?? 1;
+        currentTickValue = tickValue;
+        // 優先使用爬蟲計算的建議資金（max_lots × margin × 2.33）
+        const suggestedCapital = d.info?.suggested_capital ?? null;
+
+        // 💸 交易成本
+        document.getElementById('cardCost').textContent = `-${s.total_cost.toLocaleString()}`;
+        const costTWD = suggestedCapital ? ` ≈ TWD ${(s.total_cost * tickValue).toLocaleString()}` : '';
+        document.getElementById('cardCostPer').textContent =
+            s.total_trades > 0
+                ? `${d.info.cost_points} 點/口 × ${s.total_trades} 筆${costTWD}`
+                : '';
+
+        // 📊 期望值
+        const expected = s.total_trades > 0 ? (netPnl / s.total_trades).toFixed(1) : 0;
+        const expEl = document.getElementById('cardExpected');
+        expEl.textContent = fmtNum(parseFloat(expected));
+        expEl.className = 'text-2xl font-black ' + (parseFloat(expected) >= 0 ? 'text-green-600' : 'text-red-500');
+
+        // 📉 最大回撤 + 比例（佔高峰%）
+        const peakProfit = s.peak_profit ?? (netPnl >= 0 ? netPnl + s.max_drawdown_points : s.max_drawdown_points);
+        const drawdownPct = peakProfit > 0 ? (s.max_drawdown_points / peakProfit * 100).toFixed(1) : null;
+        document.getElementById('cardDrawdown').textContent = `-${s.max_drawdown_points.toLocaleString()}`;
+        document.getElementById('cardDrawdownPct').textContent =
+            drawdownPct ? `佔高峰 ${drawdownPct}%` : '佔高峰 —%';
+
+        // 🔻 最大策略虧損（對齊IBFF：最大回撤 ÷ 建議資金）
+        document.getElementById('cardMaxLoss').textContent = `-${s.max_drawdown_points.toLocaleString()}`;
+        if (suggestedCapital) {
+            const maxLossPct = (s.max_drawdown_points * tickValue / suggestedCapital * 100).toFixed(2);
+            document.getElementById('cardMaxLossPct').textContent = `(${maxLossPct}%) 佔建議資金`;
+        } else {
+            document.getElementById('cardMaxLossPct').textContent = '需建議資金才能計算%';
+        }
+
+        // ⚡ 風報比 = 淨報酬 ÷ 最大回撤（對齊網站公式）
+        const riskReward = s.max_drawdown_points > 0 ? netPnl / s.max_drawdown_points : null;
+        const rrEl = document.getElementById('cardRiskReward');
+        rrEl.textContent = riskReward !== null ? riskReward.toFixed(2) + 'x' : '∞';
+        rrEl.className = 'text-2xl font-black ' + (!riskReward || riskReward >= 1 ? 'text-green-600' : 'text-red-500');
+
+        // 📈 淨報酬率（網站公式：淨報酬(點) × 每點金額(TWD) ÷ 建議資金(TWD) × 100）
+        const nrEl = document.getElementById('cardNetRate');
+        if (suggestedCapital) {
+            const netRate = (netPnl * tickValue / suggestedCapital * 100).toFixed(2);
+            nrEl.textContent = `${netRate}%`;
+            nrEl.className = 'text-2xl font-black ' + (parseFloat(netRate) >= 0 ? 'text-green-600' : 'text-red-500');
+            document.getElementById('cardNetRateNote').textContent =
+                `${netPnl.toLocaleString()} × ${tickValue} ÷ ${suggestedCapital.toLocaleString()}`;
+        } else {
+            nrEl.textContent = '—';
+            nrEl.className = 'text-2xl font-black text-gray-400';
+            document.getElementById('cardNetRateNote').textContent = '需建議資金（登入後取得）';
+        }
+
+        // 🎯 勝率
+        document.getElementById('cardWinRate').textContent = `${s.win_rate_pct}%`;
+        document.getElementById('cardTradeCount').textContent =
+            `共 ${s.total_trades} 筆（勝 ${s.win_times} / 敗 ${s.loss_times}）` +
+            (openPos.length > 0 ? ` | 未平 ${openPos.length} 口` : '');
+
+        // ⚡ 獲利因子
+        const pfEl = document.getElementById('cardProfitFactor');
+        pfEl.textContent = s.profit_factor;
+        pfEl.className = 'text-2xl font-black ' + (s.profit_factor >= 1 ? 'text-green-600' : 'text-red-500');
+
+        // ⚖️ 賺賠比
+        document.getElementById('cardPnlRatio').textContent = `${s.pnl_ratio}x`;
+        document.getElementById('cardAvgWinLoss').textContent =
+            `均獲 ${s.avg_win_points} / 均虧 ${s.avg_loss_points}`;
+
+        // 🏆 總評分
+        const score = computeScore(s, totalPnl, netPnl);
+        const gradeInfo = getScoreGrade(score);
+        const scoreEl = document.getElementById('cardScore');
+        scoreEl.textContent = `${score} / 100`;
+        scoreEl.className = 'text-2xl font-black ' + gradeInfo.color;
+        const gradeEl = document.getElementById('cardScoreGrade');
+        gradeEl.textContent = gradeInfo.label;
+        gradeEl.className = 'text-xs font-bold mt-1 ' + gradeInfo.color;
+
+        renderCharts(d);
+        currentPage = 1;
+        renderTable();
+    }
+
+    // ── Charts ────────────────────────────────────────────────────────────
+    function isDark() {
+        return document.documentElement.classList.contains('dark');
+    }
+    function gridColor() {
+        return isDark() ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+    }
+    function tickColor() {
+        return isDark() ? '#94a3b8' : '#6b7280';
+    }
+
+    function destroyChart(id) {
+        if (charts[id]) { charts[id].destroy(); charts[id] = null; }
+    }
+
+    function renderCharts(d) {
+        renderCumPnl(d.daily_pnl);
+        renderMonthly(d.monthly);
+        renderWinLoss(d.stats);
+        renderTradeDist(d.trades);
+    }
+
+    function renderCumPnl(daily) {
+        destroyChart('cumPnl');
+        const tv = currentTickValue;
+        const labels = daily.map(d => fmtDate(d.date));
+        const values = daily.map(d => d.cum_profit * tv);
+        const fmtTWD = v => {
+            const s = v >= 0 ? '+' : '';
+            return Math.abs(v) >= 10000 ? s + (v/10000).toFixed(1) + '萬' : s + v.toLocaleString();
+        };
+
+        const ctx = document.getElementById('cumPnlChart').getContext('2d');
+        charts['cumPnl'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: '累積損益（元）',
+                    data: values,
+                    borderColor: values[values.length - 1] >= 0 ? 'rgba(34,197,94,1)' : 'rgba(239,68,68,1)',
+                    backgroundColor: ctx => {
+                        const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 280);
+                        gradient.addColorStop(0, 'rgba(34,197,94,0.2)');
+                        gradient.addColorStop(1, 'rgba(34,197,94,0)');
+                        return gradient;
+                    },
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    fill: true,
+                    tension: 0.3,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` 累積損益：${fmtTWD(ctx.raw)} 元`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: tickColor(),
+                            maxTicksLimit: 12,
+                            maxRotation: 0,
+                        },
+                        grid: { color: gridColor() }
+                    },
+                    y: {
+                        ticks: { color: tickColor(), callback: fmtTWD },
+                        grid: { color: gridColor() }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderMonthly(monthly) {
+        destroyChart('monthly');
+        const tv = currentTickValue;
+        const labels = monthly.map(m => m.month.substring(0,4) + '/' + m.month.substring(4,6));
+        const values = monthly.map(m => m.pnl * tv);
+        const colors = values.map(v => v >= 0 ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)');
+        const fmtTWD = v => {
+            const s = v >= 0 ? '+' : '';
+            return Math.abs(v) >= 10000 ? s + (v/10000).toFixed(1) + '萬' : s + v.toLocaleString();
+        };
+
+        const ctx = document.getElementById('monthlyChart').getContext('2d');
+        charts['monthly'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{ label: '月度損益（元）', data: values, backgroundColor: colors, borderRadius: 4 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ${fmtTWD(ctx.raw)} 元`
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: tickColor(), maxRotation: 45 }, grid: { color: gridColor() } },
+                    y: {
+                        ticks: { color: tickColor(), callback: fmtTWD },
+                        grid: { color: gridColor() }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderWinLoss(stats) {
+        destroyChart('winLoss');
+        const ctx = document.getElementById('winLossChart').getContext('2d');
+        charts['winLoss'] = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: [`獲利 ${stats.win_times} 筆`, `虧損 ${stats.loss_times} 筆`],
+                datasets: [{
+                    data: [stats.win_times, stats.loss_times],
+                    backgroundColor: ['rgba(34,197,94,0.85)', 'rgba(239,68,68,0.85)'],
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: tickColor(), padding: 16, font: { size: 12 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ${ctx.label}  (${(ctx.parsed / (stats.win_times + stats.loss_times) * 100).toFixed(1)}%)`
+                        }
+                    }
+                },
+                cutout: '65%',
+            }
+        });
+    }
+
+    function renderTradeDist(trades) {
+        destroyChart('tradeDist');
+        const tv = currentTickValue;
+        // 只取最近 200 筆以免圖太密
+        const recent = trades.slice(-200);
+        const labels = recent.map((t, i) => `#${trades.length - recent.length + i + 1}`);
+        const values = recent.map(t => t.net_pnl * tv);
+        const colors = values.map(v => v >= 0 ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)');
+
+        const ctx = document.getElementById('tradeDistChart').getContext('2d');
+        charts['tradeDist'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{ label: '淨損益（元）', data: values, backgroundColor: colors, borderRadius: 2 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const s = ctx.raw >= 0 ? '+' : '';
+                                return ` ${s}${ctx.raw.toLocaleString()} 元`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { display: false }, grid: { display: false } },
+                    y: {
+                        ticks: {
+                            color: tickColor(),
+                            callback: v => (v >= 0 ? '+' : '') + v.toLocaleString()
+                        },
+                        grid: { color: gridColor() }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Trade Table ───────────────────────────────────────────────────────
+    function getFilteredTrades() {
+        if (!currentData) return [];
+        const dirF    = document.getElementById('dirFilter').value;
+        const resultF = document.getElementById('resultFilter').value;
+        return currentData.trades.filter(t => {
+            if (dirF !== 'all' && t.direction !== dirF) return false;
+            if (resultF === 'win' && t.net_pnl <= 0) return false;
+            if (resultF === 'loss' && t.net_pnl >= 0) return false;
+            return true;
+        }).reverse();
+    }
+
+    function renderTable() {
+        const trades = getFilteredTrades();
+        const total  = trades.length;
+        const pages  = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        if (currentPage > pages) currentPage = pages;
+
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const slice = trades.slice(start, start + PAGE_SIZE);
+
+        document.getElementById('tableCount').textContent = `共 ${total} 筆`;
+        document.getElementById('pageInfo').textContent = `第 ${currentPage} / ${pages} 頁`;
+        document.getElementById('prevBtn').disabled = currentPage <= 1;
+        document.getElementById('nextBtn').disabled = currentPage >= pages;
+
+        const tbody = document.getElementById('tradeTableBody');
+        tbody.innerHTML = '';
+
+        const tv = currentTickValue;
+        slice.forEach((t, i) => {
+            const idx = currentData.trades.length - (start + i);
+            const isWin = t.net_pnl > 0;
+            const rawTWD = Math.round(t.raw_pnl * tv);
+            const netTWD = Math.round(t.net_pnl * tv);
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50 transition border-b border-gray-100';
+            tr.innerHTML = `
+                <td class="p-3 text-left text-gray-400 text-xs">${idx}</td>
+                <td class="p-3 text-left font-medium text-gray-700">${fmtDate(t.date)}</td>
+                <td class="p-3 text-center">
+                    <span class="text-xs font-bold px-2 py-0.5 rounded ${t.direction === '多' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">
+                        ${t.direction}
+                    </span>
+                </td>
+                <td class="p-3 text-gray-700">${t.open_price.toLocaleString()}</td>
+                <td class="p-3 text-gray-700">${t.close_price.toLocaleString()}</td>
+                <td class="p-3 ${rawTWD >= 0 ? 'text-green-600' : 'text-red-500'} font-medium">
+                    ${rawTWD >= 0 ? '+' : ''}${rawTWD.toLocaleString()}
+                </td>
+                <td class="p-3 ${isWin ? 'text-green-600' : 'text-red-500'} font-bold">
+                    ${netTWD >= 0 ? '+' : ''}${netTWD.toLocaleString()}
+                </td>`;
+            tbody.appendChild(tr);
+        });
+
+        if (slice.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-gray-400">無符合條件的交易紀錄</td></tr>';
+        }
+    }
+
+    function changePage(delta) {
+        currentPage += delta;
+        renderTable();
+        document.getElementById('tradeTableBody').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+</script>
+</body>
+</html>

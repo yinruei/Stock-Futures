@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>策略比較評估</title>
+    <script>(function(){const t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark');})()</script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 資料由 /api/data 動態取得，不依賴快取 -->
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, '微軟正黑體', sans-serif; }
+        html.dark body { background-color: #0f172a; color: #e2e8f0; }
+        html.dark .bg-white { background-color: #1e293b !important; }
+        html.dark .bg-gray-50 { background-color: #1e293b !important; }
+        html.dark .bg-gray-100 { background-color: #0f172a !important; }
+        html.dark .text-gray-900 { color: #f1f5f9 !important; }
+        html.dark .text-gray-800 { color: #e2e8f0 !important; }
+        html.dark .text-gray-700 { color: #cbd5e1 !important; }
+        html.dark .text-gray-600 { color: #94a3b8 !important; }
+        html.dark .text-gray-500 { color: #64748b !important; }
+        html.dark .border, html.dark .border-b, html.dark .border-t { border-color: #334155 !important; }
+        html.dark [class*="divide-"] > * { border-color: #334155 !important; }
+        html.dark .shadow-md, html.dark .shadow-sm { box-shadow: 0 4px 24px rgba(0,0,0,0.5) !important; }
+        html.dark .hover\:bg-gray-50:hover { background-color: #334155 !important; }
+        html.dark .bg-gray-200 { background-color: #334155 !important; }
+        .drop-zone { border: 2px dashed #94a3b8; transition: all 0.2s; }
+        .drop-zone.drag-over { border-color: #8b5cf6; background: rgba(139,92,246,0.05); }
+        html.dark .drop-zone { border-color: #475569; }
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { background: rgba(99,102,241,0.08); }
+        th.sort-asc::after { content: ' ▲'; font-size: 10px; }
+        th.sort-desc::after { content: ' ▼'; font-size: 10px; }
+        .rank-1 { background: linear-gradient(90deg, rgba(250,204,21,0.12), transparent); }
+        .rank-2 { background: linear-gradient(90deg, rgba(148,163,184,0.10), transparent); }
+        .rank-3 { background: linear-gradient(90deg, rgba(180,120,60,0.10), transparent); }
+        .metric-bar { height: 6px; border-radius: 3px; transition: width 0.4s; }
+        html.dark #swingWarnBanner { background: rgba(120,80,0,0.2) !important; border-color: #92400e !important; color: #fde68a !important; }
+        html.dark #swingWarnBanner code { background: rgba(120,80,0,0.3) !important; }
+        .tab-btn { background: #f1f5f9; color: #64748b; transition: all 0.15s; }
+        .tab-btn:hover { background: #e2e8f0; }
+        .tab-active { background: #4f46e5 !important; color: #fff !important; }
+        html.dark .tab-btn { background: #334155; color: #94a3b8; }
+        html.dark .tab-active { background: #4f46e5 !important; color: #fff !important; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+
+<!-- 頁首 -->
+<div class="bg-white shadow-sm border-b sticky top-0 z-10">
+    <div class="max-w-screen-2xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <a href="strategy_dashboard.html" class="text-gray-400 hover:text-indigo-500 text-sm transition">📊 單策略分析</a>
+            <span class="text-gray-300">|</span>
+            <span class="text-lg font-black text-gray-900">📋 策略比較評估</span>
+            <span class="text-gray-300">|</span>
+            <div id="categoryTabs" class="hidden items-center gap-1">
+                <button onclick="setCategoryFilter('全部')"   id="tab全部" class="tab-btn tab-active text-xs px-3 py-1 rounded-full">全部</button>
+                <button onclick="setCategoryFilter('組合')"   id="tab組合" class="tab-btn text-xs px-3 py-1 rounded-full">組合</button>
+                <button onclick="setCategoryFilter('波段')"   id="tab波段" class="tab-btn text-xs px-3 py-1 rounded-full">波段</button>
+            </div>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+            <!-- 日期篩選（前端重算，不需爬蟲）-->
+            <div id="datePickerGroup" class="hidden items-center gap-1 flex-wrap">
+                <span class="text-xs text-gray-500 font-medium">篩選：</span>
+                <input type="date" id="filterStart"
+                       class="text-xs border rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                <span class="text-xs text-gray-400">～</span>
+                <input type="date" id="filterEnd"
+                       class="text-xs border rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                <button onclick="applyFilter()"
+                        class="text-xs px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition font-semibold">
+                    套用
+                </button>
+                <button onclick="resetFilter()"
+                        class="text-xs px-2 py-1.5 text-gray-500 hover:text-gray-700 border rounded-lg transition">
+                    全部
+                </button>
+            </div>
+            <span id="dateRangeLabel" class="text-xs text-gray-400 hidden"></span>
+            <span id="autoLoadBadge" class="hidden text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">● 已載入</span>
+            <button onclick="exportCSV()" id="exportBtn" class="hidden text-xs px-3 py-1.5 bg-green-600 text-white hover:bg-green-700 rounded-lg transition">⬇ 匯出 CSV</button>
+            <button onclick="toggleTheme()" class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition text-xl">
+                <span id="themeIcon">🌙</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 上傳區（僅在無 compare_data.js 時顯示）-->
+<div id="uploadSection" class="max-w-xl mx-auto mt-24 px-4 hidden">
+    <div class="drop-zone bg-white rounded-2xl shadow-md p-14 text-center cursor-pointer"
+         id="dropZone"
+         onclick="document.getElementById('fileInput').click()"
+         ondragover="event.preventDefault(); dropZone.classList.add('drag-over')"
+         ondragleave="dropZone.classList.remove('drag-over')"
+         ondrop="handleDrop(event)">
+        <div class="text-6xl mb-4">📂</div>
+        <h2 class="text-xl font-bold text-gray-800 mb-2">載入策略資料進行比較</h2>
+        <p class="text-gray-500 mb-6">拖曳多個 JSON 檔案，或點擊一次選取</p>
+        <div class="inline-block px-6 py-2 bg-purple-600 text-white font-semibold rounded-lg text-sm">
+            選擇多個 JSON 檔案
+        </div>
+        <p class="mt-4 text-xs text-gray-400">由 batch_scrape.py 或 strategy_scraper.py 產生的 *_data.json</p>
+    </div>
+    <input type="file" id="fileInput" accept=".json" multiple class="hidden" onchange="loadFiles(event)">
+    <div id="uploadError" class="hidden mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm text-center"></div>
+</div>
+
+<!-- 載入中畫面 -->
+<div id="loadingSection" class="max-w-xl mx-auto mt-24 px-4 text-center">
+    <div class="text-5xl mb-4 animate-pulse">⏳</div>
+    <p class="text-gray-500">載入策略資料中...</p>
+</div>
+
+
+<!-- 主要內容 -->
+<div id="mainSection" class="hidden max-w-screen-2xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- 最優指標快覽 -->
+    <div id="topCards" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3"></div>
+
+    <!-- 圖表區：雷達 + 條形 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl shadow-md p-5">
+            <h3 class="text-sm font-bold text-gray-800 mb-1 border-b pb-2">🕸 策略多維比較（雷達圖）</h3>
+            <p class="text-xs text-gray-400 mb-3">各指標標準化後比較，越外圈越佳（最多顯示 6 個）</p>
+            <div class="relative h-64"><canvas id="radarChart"></canvas></div>
+        </div>
+        <div class="bg-white rounded-xl shadow-md p-5">
+            <h3 class="text-sm font-bold text-gray-800 mb-1 border-b pb-2">📊 淨報酬率比較</h3>
+            <p class="text-xs text-gray-400 mb-3">依淨報酬率排序（需建議資金，TAIFEX_TMF = 265,850 TWD）</p>
+            <div class="relative h-64"><canvas id="netRateChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- 比較總表 -->
+    <div class="bg-white rounded-xl shadow-md p-6 overflow-hidden">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <div>
+                <h3 class="text-base font-bold text-gray-800">📋 策略比較總表</h3>
+                <p class="text-xs text-gray-400 mt-0.5">點擊欄位標題排序 · 點擊列查看詳細分析</p>
+            </div>
+            <span class="text-xs text-gray-400" id="strategyCount"></span>
+        </div>
+        <!-- 波段策略篩選警告橫幅 -->
+        <div id="swingWarnBanner" class="hidden mx-4 mb-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-xs text-amber-800">
+            <span class="text-base leading-none mt-0.5">⚠</span>
+            <span>目前套用了日期篩選。<strong>波段策略</strong>的持倉可能跨越篩選邊界（開倉日早於起始日、或收盤日晚於結束日），區間數據與 IBFF 官網可能有顯著偏差。組合策略（當沖）影響較小。如需精確對比，請在終端機執行：<code class="bg-amber-100 px-1 rounded font-mono">python strategy_scraper.py &lt;代碼&gt; &lt;開始日期&gt; &lt;結束日期&gt;</code></span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm" id="compareTable">
+                <thead class="bg-gray-50 text-gray-600 border-b text-xs">
+                    <tr>
+                        <th class="p-3 text-center w-10">排名</th>
+                        <th class="p-3 text-left sortable" data-col="code">策略代碼</th>
+                        <th class="p-3 text-left sortable min-w-[200px]" data-col="name">名稱</th>
+                        <th class="p-3 text-right sortable sort-desc" data-col="netRate">淨報酬率</th>
+                        <th class="p-3 text-right sortable" data-col="netPnl">淨報酬（點）</th>
+                        <th class="p-3 text-right sortable" data-col="totalPnl">總報酬（點）</th>
+                        <th class="p-3 text-right sortable" data-col="drawdown">最大回撤</th>
+                        <th class="p-3 text-right sortable" data-col="drawdownPct">回撤%</th>
+                        <th class="p-3 text-right sortable" data-col="rr">風報比</th>
+                        <th class="p-3 text-right sortable" data-col="winRate">勝率</th>
+                        <th class="p-3 text-right sortable" data-col="pf">獲利因子</th>
+                        <th class="p-3 text-right sortable" data-col="pr">賺賠比</th>
+                        <th class="p-3 text-right sortable" data-col="expected">期望值/筆</th>
+                        <th class="p-3 text-right sortable" data-col="trades">交易數</th>
+                        <th class="p-3 text-right sortable" data-col="score">評分</th>
+                        <th class="p-3 text-center">詳情</th>
+                    </tr>
+                </thead>
+                <tbody id="compareBody" class="divide-y divide-gray-100"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 指標說明 -->
+    <div class="bg-white rounded-xl shadow-md p-5">
+        <h3 class="text-sm font-bold text-gray-800 mb-3 border-b pb-2">📖 指標說明</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-gray-600">
+            <div><span class="font-bold text-gray-800">淨報酬率</span>：淨報酬×每點金額÷建議資金×100（IBFF 公式，TAIFEX_TMF 用 265,850 TWD）</div>
+            <div><span class="font-bold text-gray-800">風報比</span>：淨報酬÷最大回撤，越高越好，＞3 優秀</div>
+            <div><span class="font-bold text-gray-800">獲利因子</span>：總獲利÷總虧損，＞1.5 良好，＞2.0 優秀</div>
+            <div><span class="font-bold text-gray-800">賺賠比</span>：平均獲利÷平均虧損，配合勝率評估</div>
+            <div><span class="font-bold text-gray-800">期望值/筆</span>：淨報酬÷交易次數，正值代表平均每筆獲利</div>
+            <div><span class="font-bold text-gray-800">最大回撤%</span>：最大回撤÷建議資金，越低風險越小</div>
+            <div><span class="font-bold text-gray-800">評分（0-100）</span>：綜合評估，S≥85 A≥70 B≥55 C≥40 D&lt;40</div>
+            <div><span class="font-bold text-gray-800">淨報酬 vs 總報酬</span>：淨報酬含未平倉浮動損益並扣除成本；總報酬對應 IBFF 網站</div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // ── 常數 ──────────────────────────────────────────────────────────────
+    // 建議資金從各策略 JSON 的 info.suggested_capital 取得（依最大口數×保證金×2.33 計算）
+    // 此常數僅作 fallback，正常情況下不會用到
+    const PRODUCT_CAPITAL = { 'TAIFEX_TMF': 222600, 'TAIFEX_MXF': 222600, 'TAIFEX_TXF': 2113500 };
+    const COLORS = [
+        'rgba(99,102,241,0.85)', 'rgba(34,197,94,0.85)', 'rgba(249,115,22,0.85)',
+        'rgba(236,72,153,0.85)', 'rgba(20,184,166,0.85)', 'rgba(234,179,8,0.85)',
+        'rgba(168,85,247,0.85)', 'rgba(239,68,68,0.85)', 'rgba(59,130,246,0.85)',
+        'rgba(16,185,129,0.85)', 'rgba(245,158,11,0.85)',
+    ];
+
+    let allData = [];
+    let sortCol = 'netRate';
+    let sortDir = -1;   // -1 = desc
+    let radarChart = null;
+    let netRateChart = null;
+    let categoryFilter = '全部';   // 分類篩選
+
+    function setCategoryFilter(cat) {
+        categoryFilter = cat;
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+        const tab = document.getElementById('tab' + cat);
+        if (tab) tab.classList.add('tab-active');
+        rebuildAllData();
+    }
+
+    function rebuildAllData() {
+        let source = fullRawData;
+        if (categoryFilter !== '全部') {
+            source = fullRawData.filter(d => (d.strategy_category || '') === categoryFilter);
+        }
+        if (filterStartStr && filterEndStr) {
+            allData = source.map(raw => {
+                const fs = calcStatsFromRange(raw, filterStartStr, filterEndStr);
+                const filtered = { ...raw, stats: fs, daily_pnl: fs._filtered_daily, trades: fs._filtered_trades };
+                return parseEntry(filtered);
+            });
+        } else {
+            allData = source.map(parseEntry);
+        }
+        if (radarChart)   { radarChart.destroy();   radarChart = null; }
+        if (netRateChart) { netRateChart.destroy(); netRateChart = null; }
+        renderAll();
+    }
+
+    // ── 前端日期篩選：從原始 trades + daily_pnl 重新計算統計 ────────────────
+    let fullRawData = [];      // 儲存從伺服器載入的完整原始資料
+    let filterStartStr = '';   // 篩選用日期（YYYYMMDD 格式）
+    let filterEndStr   = '';
+
+    function calcStatsFromRange(rawData, startStr, endStr) {
+        // rawData: 單一策略的完整 JSON（含 trades, daily_pnl, info）
+        const trades = (rawData.trades || []).filter(t => t.date >= startStr && t.date <= endStr);
+        const daily  = (rawData.daily_pnl || []).filter(d => d.date >= startStr && d.date <= endStr);
+
+        let gross_win = 0, gross_loss = 0, win_times = 0, loss_times = 0, net_pnl = 0;
+        for (const t of trades) {
+            net_pnl += t.net_pnl;
+            if (t.raw_pnl > 0)      { gross_win  += t.raw_pnl;            win_times++;  }
+            else if (t.raw_pnl < 0) { gross_loss += Math.abs(t.raw_pnl);  loss_times++; }
+        }
+
+        // 重算累積損益曲線 + 最大回撤
+        let cum = 0, maxCum = 0, maxDD = 0;
+        const newDaily = daily.map(d => {
+            cum += d.day_profit;
+            if (cum > maxCum) maxCum = cum;
+            const dd = maxCum - cum;
+            if (dd > maxDD) maxDD = dd;
+            return { ...d, cum_profit: Math.round(cum * 1e4) / 1e4 };
+        });
+
+        const total = win_times + loss_times;
+        const pf    = gross_loss > 0 ? gross_win / gross_loss : Infinity;
+        const aw    = win_times  > 0 ? gross_win  / win_times  : 0;
+        const al    = loss_times > 0 ? gross_loss / loss_times : 0;
+        const pr    = al > 0 ? aw / al : Infinity;
+        const cost  = rawData.info?.cost_points ?? 0;
+
+        return {
+            website_total_pnl:   Math.round((gross_win - gross_loss) * 100) / 100,
+            net_closed_pnl:      Math.round(net_pnl * 100) / 100,
+            floating_pnl:        0,   // 篩選模式下不追蹤浮動損益
+            total_cost:          total * cost,
+            max_drawdown_points: Math.round(maxDD * 100) / 100,
+            peak_profit:         Math.round(maxCum * 100) / 100,
+            total_trades:        total,
+            win_times, loss_times,
+            win_rate_pct:        total > 0 ? Math.round(win_times / total * 10000) / 100 : 0,
+            profit_factor:       isFinite(pf) ? Math.round(pf * 10000) / 10000 : 9999,
+            pnl_ratio:           isFinite(pr) ? Math.round(pr * 10000) / 10000 : 9999,
+            avg_win_points:      Math.round(aw * 100) / 100,
+            avg_loss_points:     Math.round(al * 100) / 100,
+            gross_win:           Math.round(gross_win * 100) / 100,
+            gross_loss:          Math.round(gross_loss * 100) / 100,
+            open_positions:      [],
+            _filtered_daily:     newDaily,
+            _filtered_trades:    trades,
+        };
+    }
+
+    function applyFilter() {
+        const fs = document.getElementById('filterStart').value;
+        const fe = document.getElementById('filterEnd').value;
+        if (!fs || !fe || !fullRawData.length) return;
+        filterStartStr = fs.replace(/-/g, '');
+        filterEndStr   = fe.replace(/-/g, '');
+        document.getElementById('dateRangeLabel').textContent = `篩選範圍：${fs} ～ ${fe}`;
+        document.getElementById('swingWarnBanner').classList.remove('hidden');
+        rebuildAllData();
+    }
+
+    // ── 評分（同 dashboard）────────────────────────────────────────────────
+    function computeScore(s, netPnl) {
+        let score = 0;
+        const rr = s.max_drawdown_points > 0 ? netPnl / s.max_drawdown_points : 0;
+        score += rr >= 5 ? 25 : rr >= 3 ? 20 : rr >= 2 ? 15 : rr >= 1 ? 10 : rr > 0 ? 5 : 0;
+        const wr = s.win_rate_pct;
+        score += wr >= 60 ? 20 : wr >= 50 ? 15 : wr >= 40 ? 10 : 5;
+        const pf = s.profit_factor;
+        score += pf >= 2.0 ? 20 : pf >= 1.5 ? 15 : pf >= 1.2 ? 10 : pf >= 1.0 ? 5 : 0;
+        const pr = s.pnl_ratio;
+        score += pr >= 2.0 ? 20 : pr >= 1.5 ? 15 : pr >= 1.0 ? 10 : 5;
+        const exp = s.total_trades > 0 ? netPnl / s.total_trades : 0;
+        score += exp >= 100 ? 15 : exp >= 50 ? 12 : exp >= 20 ? 9 : exp >= 0 ? 5 : 0;
+        return Math.round(score);
+    }
+    function gradeLabel(score) {
+        if (score >= 85) return { label: 'S', color: 'text-yellow-500', bg: 'bg-yellow-50' };
+        if (score >= 70) return { label: 'A', color: 'text-green-600', bg: 'bg-green-50' };
+        if (score >= 55) return { label: 'B', color: 'text-blue-600', bg: 'bg-blue-50' };
+        if (score >= 40) return { label: 'C', color: 'text-gray-500', bg: 'bg-gray-50' };
+        return { label: 'D', color: 'text-red-500', bg: 'bg-red-50' };
+    }
+
+    // ── 解析單個 JSON ───────────────────────────────────────────────────────
+    function parseEntry(d) {
+        const s = d.stats;
+        const product = (d.info?.products ?? []).find(p => p.tick_value) ?? {};
+        const tv = product.tick_value ?? 1;
+        const cap = d.info?.suggested_capital ?? PRODUCT_CAPITAL[product.code] ?? null;
+        const netPnl = (s.net_closed_pnl ?? 0) + (s.floating_pnl ?? 0);
+        const netRate = cap ? netPnl * tv / cap * 100 : null;
+        const drawdownPct = cap ? s.max_drawdown_points * tv / cap * 100 : null;
+        const rr = s.max_drawdown_points > 0 ? netPnl / s.max_drawdown_points : null;
+        const expected = s.total_trades > 0 ? netPnl / s.total_trades : 0;
+        const score = computeScore(s, netPnl);
+        return {
+            code:        d.strategy_code,
+            name:        d.strategy_name ?? d.info?.name ?? d.strategy_code,
+            netRate, netPnl, drawdownPct, rr, expected, score,
+            totalPnl:    s.website_total_pnl ?? 0,
+            drawdown:    s.max_drawdown_points,
+            winRate:     s.win_rate_pct,
+            pf:          s.profit_factor,
+            pr:          s.pnl_ratio,
+            trades:      s.total_trades,
+            tv, cap,
+            category:    d.strategy_category ?? '',
+            beginDate:   d.begin_date,
+            endDate:     d.end_date,
+            raw:         d,
+        };
+    }
+
+    // ── 檔案載入 ────────────────────────────────────────────────────────────
+    function handleDrop(e) {
+        e.preventDefault();
+        document.getElementById('dropZone').classList.remove('drag-over');
+        if (e.dataTransfer.files.length) loadFileList(e.dataTransfer.files);
+    }
+    function loadFiles(e) {
+        if (e.target.files.length) loadFileList(e.target.files);
+    }
+    function loadFileList(files) {
+        const arr = Array.from(files).filter(f => f.name.endsWith('.json'));
+        if (!arr.length) { showError('請選擇 .json 檔案'); return; }
+        let loaded = 0;
+        const results = [];
+        arr.forEach((file, i) => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                try {
+                    const d = JSON.parse(e.target.result);
+                    if (d.info && d.stats) results[i] = parseEntry(d);
+                } catch(err) {}
+                loaded++;
+                if (loaded === arr.length) {
+                    allData = results.filter(Boolean);
+                    if (!allData.length) { showError('無有效的策略 JSON 檔案'); return; }
+                    renderAll();
+                }
+            };
+            reader.readAsText(file, 'utf-8');
+        });
+    }
+    function showError(msg) {
+        const el = document.getElementById('uploadError');
+        el.textContent = msg; el.classList.remove('hidden');
+    }
+
+    // ── 主渲染 ──────────────────────────────────────────────────────────────
+    function renderAll() {
+        document.getElementById('uploadSection').classList.add('hidden');
+        document.getElementById('mainSection').classList.remove('hidden');
+        document.getElementById('exportBtn').classList.remove('hidden');
+        document.getElementById('dateRangeLabel').classList.remove('hidden');
+        document.getElementById('strategyCount').textContent = `共 ${allData.length} 個策略`;
+
+        renderTopCards();
+        renderTable();
+        renderRadar();
+        renderNetRateChart();
+    }
+
+    // ── 重置篩選（顯示全部日期）──────────────────────────────────────────────
+    function resetFilter() {
+        if (!fullRawData.length) return;
+        filterStartStr = '';
+        filterEndStr   = '';
+        const dates = fullRawData.flatMap(d => (d.daily_pnl || []).map(p => p.date));
+        if (dates.length) {
+            const minD = dates.reduce((a,b) => a<b?a:b);
+            const maxD = dates.reduce((a,b) => a>b?a:b);
+            const fmt = s => `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+            document.getElementById('filterStart').value = fmt(minD);
+            document.getElementById('filterEnd').value   = fmt(maxD);
+        }
+        document.getElementById('dateRangeLabel').textContent = '全部資料';
+        document.getElementById('swingWarnBanner').classList.add('hidden');
+        rebuildAllData();
+    }
+
+    // ── 最優指標快覽 ─────────────────────────────────────────────────────────
+    function renderTopCards() {
+        const sorted_nr  = [...allData].filter(d => d.netRate !== null).sort((a,b) => b.netRate - a.netRate);
+        const sorted_rr  = [...allData].filter(d => d.rr !== null).sort((a,b) => b.rr - a.rr);
+        const sorted_wr  = [...allData].sort((a,b) => b.winRate - a.winRate);
+        const sorted_pf  = [...allData].sort((a,b) => b.pf - a.pf);
+        const sorted_sc  = [...allData].sort((a,b) => b.score - a.score);
+        const sorted_dd  = [...allData].sort((a,b) => a.drawdown - b.drawdown);
+
+        const cards = [
+            { icon: '🏆', label: '最高淨報酬率', d: sorted_nr[0],  val: d => d.netRate !== null ? d.netRate.toFixed(2)+'%' : '—', color: 'border-yellow-400' },
+            { icon: '⚡', label: '最高風報比',   d: sorted_rr[0],  val: d => d.rr !== null ? d.rr.toFixed(2)+'x' : '—', color: 'border-teal-400' },
+            { icon: '🎯', label: '最高勝率',     d: sorted_wr[0],  val: d => d.winRate+'%', color: 'border-blue-400' },
+            { icon: '📈', label: '最高獲利因子', d: sorted_pf[0],  val: d => d.pf, color: 'border-green-400' },
+            { icon: '🛡️', label: '最小回撤',     d: sorted_dd[0],  val: d => '-'+d.drawdown.toLocaleString(), color: 'border-indigo-400' },
+            { icon: '🌟', label: '最高總評分',   d: sorted_sc[0],  val: d => d.score+'/100', color: 'border-purple-400' },
+        ];
+        const container = document.getElementById('topCards');
+        container.innerHTML = cards.map(c => `
+            <div class="bg-white rounded-xl shadow-sm p-4 border-b-4 ${c.color}">
+                <div class="text-xs text-gray-500 font-bold mb-1">${c.icon} ${c.label}</div>
+                <div class="text-xl font-black text-green-600">${c.d ? c.val(c.d) : '—'}</div>
+                <div class="text-xs text-gray-400 mt-1 truncate">${c.d ? c.d.name : '—'}</div>
+            </div>
+        `).join('');
+    }
+
+    // ── 比較表 ──────────────────────────────────────────────────────────────
+    function getSortedData() {
+        return [...allData].sort((a, b) => {
+            const av = a[sortCol] ?? -Infinity;
+            const bv = b[sortCol] ?? -Infinity;
+            if (typeof av === 'string') return sortDir * av.localeCompare(bv);
+            return sortDir * (av - bv);
+        });
+    }
+
+    function renderTable() {
+        const sorted = getSortedData();
+        const maxNetRate = Math.max(...allData.map(d => d.netRate ?? 0));
+        const maxRR      = Math.max(...allData.map(d => d.rr ?? 0));
+        const maxPf      = Math.max(...allData.map(d => d.pf));
+
+        const tbody = document.getElementById('compareBody');
+        tbody.innerHTML = '';
+
+        sorted.forEach((d, i) => {
+            const rank = i + 1;
+            const grade = gradeLabel(d.score);
+            const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
+            const pnlColor  = d.netPnl >= 0 ? 'text-green-600' : 'text-red-500';
+            const rrColor   = d.rr >= 3 ? 'text-green-600 font-bold' : d.rr >= 1 ? 'text-yellow-600' : 'text-red-500';
+            const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+
+            const row = document.createElement('tr');
+            row.className = `hover:bg-gray-50 transition cursor-pointer border-b border-gray-100 ${rankClass}`;
+            row.onclick = () => {
+                sessionStorage.setItem('compareData', JSON.stringify(d.raw));
+                window.open('strategy_dashboard.html?from=compare', '_blank');
+            };
+            row.innerHTML = `
+                <td class="p-3 text-center font-bold text-gray-500">${rankBadge}</td>
+                <td class="p-3 text-left font-mono text-xs text-indigo-600">${d.code}</td>
+                <td class="p-3 text-left text-gray-700 text-xs max-w-[220px]" title="${d.name}">
+                    <span class="truncate block">${d.name}</span>
+                    ${filterStartStr && filterEndStr && d.category === '波段' ? '<span class="inline-block mt-0.5 text-amber-500 text-xs" title="波段策略持倉可能跨越篩選邊界，區間數據與官網可能偏差">⚠ 數據可能偏差</span>' : ''}
+                </td>
+                <td class="p-3 text-right font-bold ${pnlColor}">
+                    ${d.netRate !== null ? d.netRate.toFixed(2)+'%' : '—'}
+                    <div class="metric-bar bg-green-200 mt-1"><div class="metric-bar bg-green-500" style="width:${d.netRate !== null ? Math.min(100, d.netRate/maxNetRate*100).toFixed(0) : 0}%"></div></div>
+                </td>
+                <td class="p-3 text-right ${pnlColor}">${fmtNum(Math.round(d.netPnl))}</td>
+                <td class="p-3 text-right text-gray-600">${fmtNum(Math.round(d.totalPnl))}</td>
+                <td class="p-3 text-right text-red-500">-${d.drawdown.toLocaleString()}</td>
+                <td class="p-3 text-right ${d.drawdownPct !== null ? (d.drawdownPct <= 15 ? 'text-green-600' : d.drawdownPct <= 25 ? 'text-yellow-600' : 'text-red-500') : 'text-gray-400'}">
+                    ${d.drawdownPct !== null ? d.drawdownPct.toFixed(2)+'%' : '—'}
+                </td>
+                <td class="p-3 text-right ${rrColor}">
+                    ${d.rr !== null ? d.rr.toFixed(2)+'x' : '∞'}
+                    <div class="metric-bar bg-teal-200 mt-1"><div class="metric-bar bg-teal-500" style="width:${d.rr !== null ? Math.min(100, d.rr/maxRR*100).toFixed(0) : 0}%"></div></div>
+                </td>
+                <td class="p-3 text-right ${d.winRate >= 55 ? 'text-green-600' : d.winRate >= 45 ? 'text-yellow-600' : 'text-red-500'}">${d.winRate}%</td>
+                <td class="p-3 text-right ${d.pf >= 1.5 ? 'text-green-600' : d.pf >= 1.2 ? 'text-yellow-600' : 'text-red-500'}">
+                    ${d.pf}
+                    <div class="metric-bar bg-blue-200 mt-1"><div class="metric-bar bg-blue-500" style="width:${Math.min(100, d.pf/maxPf*100).toFixed(0)}%"></div></div>
+                </td>
+                <td class="p-3 text-right ${d.pr >= 1.5 ? 'text-green-600' : d.pr >= 1.0 ? 'text-yellow-600' : 'text-red-500'}">${d.pr}x</td>
+                <td class="p-3 text-right ${d.expected >= 50 ? 'text-green-600' : d.expected >= 0 ? 'text-gray-700' : 'text-red-500'}">${Math.round(d.expected)}</td>
+                <td class="p-3 text-right text-gray-500">${d.trades.toLocaleString()}</td>
+                <td class="p-3 text-right">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${grade.color} ${grade.bg}">
+                        ${grade.label} ${d.score}
+                    </span>
+                </td>
+                <td class="p-3 text-center text-indigo-500 text-xs hover:underline">詳情 →</td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        // 更新排序指示
+        document.querySelectorAll('th.sortable').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+            if (th.dataset.col === sortCol) {
+                th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+            }
+        });
+    }
+
+    // 排序點擊
+    document.querySelectorAll('th.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+            const col = th.dataset.col;
+            if (sortCol === col) sortDir *= -1;
+            else { sortCol = col; sortDir = -1; }
+            renderTable();
+        });
+    });
+
+    // ── 雷達圖 ──────────────────────────────────────────────────────────────
+    function renderRadar() {
+        if (radarChart) { radarChart.destroy(); radarChart = null; }
+        const show = allData.slice(0, 6);   // 最多 6 個
+
+        // 各指標正規化（0–1）
+        const metrics = ['淨報酬率', '風報比', '勝率', '獲利因子', '賺賠比', '評分'];
+        const getVals = d => [
+            d.netRate ?? 0,
+            d.rr ?? 0,
+            d.winRate,
+            d.pf,
+            d.pr,
+            d.score,
+        ];
+        const allVals = show.map(getVals);
+        const maxes = metrics.map((_, i) => Math.max(...allVals.map(v => v[i]), 0.01));
+        const normalized = allVals.map(vals => vals.map((v, i) => (v / maxes[i] * 100).toFixed(1)));
+
+        const isDark = document.documentElement.classList.contains('dark');
+        const gridC  = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+        const tickC  = isDark ? '#94a3b8' : '#6b7280';
+
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: metrics,
+                datasets: show.map((d, i) => ({
+                    label: d.code,
+                    data: normalized[i],
+                    borderColor: COLORS[i],
+                    backgroundColor: COLORS[i].replace('0.85', '0.12'),
+                    borderWidth: 2,
+                    pointRadius: 3,
+                }))
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { color: tickC, font: { size: 11 }, padding: 12 } } },
+                scales: {
+                    r: {
+                        min: 0, max: 100,
+                        ticks: { display: false },
+                        grid: { color: gridC },
+                        angleLines: { color: gridC },
+                        pointLabels: { color: tickC, font: { size: 12 } }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── 淨報酬率條形圖 ───────────────────────────────────────────────────────
+    function renderNetRateChart() {
+        if (netRateChart) { netRateChart.destroy(); netRateChart = null; }
+        const sorted = [...allData].sort((a, b) => (b.netRate ?? -999) - (a.netRate ?? -999));
+        const labels = sorted.map(d => d.code.replace('IBF_','').replace('pf_tm',''));
+        const values = sorted.map(d => d.netRate !== null ? parseFloat(d.netRate.toFixed(2)) : 0);
+        const colors = values.map((v, i) => COLORS[i % COLORS.length]);
+
+        const isDark = document.documentElement.classList.contains('dark');
+        const gridC  = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+        const tickC  = isDark ? '#94a3b8' : '#6b7280';
+
+        const ctx = document.getElementById('netRateChart').getContext('2d');
+        netRateChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{ label: '淨報酬率 (%)', data: values, backgroundColor: colors, borderRadius: 6 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ` ${ctx.raw.toFixed(2)}%` } }
+                },
+                scales: {
+                    x: { ticks: { color: tickC, callback: v => v+'%' }, grid: { color: gridC } },
+                    y: { ticks: { color: tickC, font: { size: 11 } }, grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // ── CSV 匯出 ─────────────────────────────────────────────────────────────
+    function exportCSV() {
+        const sorted = getSortedData();
+        const headers = ['排名','策略代碼','策略名稱','淨報酬率(%)','淨報酬(點)','總報酬(點)','最大回撤(點)','回撤%(建議資金)','風報比','勝率(%)','獲利因子','賺賠比','期望值/筆','交易次數','評分'];
+        const rows = sorted.map((d, i) => [
+            i+1, d.code, d.name,
+            d.netRate !== null ? d.netRate.toFixed(2) : '',
+            Math.round(d.netPnl), Math.round(d.totalPnl),
+            d.drawdown,
+            d.drawdownPct !== null ? d.drawdownPct.toFixed(2) : '',
+            d.rr !== null ? d.rr.toFixed(2) : '',
+            d.winRate, d.pf, d.pr, Math.round(d.expected),
+            d.trades, d.score
+        ]);
+        const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+        const blob = new Blob(['﻿'+csv], { type: 'text/csv;charset=utf-8' });
+        const url  = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `strategy_compare_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click(); URL.revokeObjectURL(url);
+    }
+
+    // ── 重置（切換到手動上傳模式）────────────────────────────────────────────
+    function resetAll() {
+        allData = [];
+        document.getElementById('mainSection').classList.add('hidden');
+        document.getElementById('uploadSection').classList.remove('hidden');
+        document.getElementById('autoLoadBadge').classList.add('hidden');
+        document.getElementById('exportBtn').classList.add('hidden');
+        document.getElementById('dateRangeLabel').classList.add('hidden');
+        document.getElementById('fileInput').value = '';
+        if (radarChart)   { radarChart.destroy();   radarChart = null; }
+        if (netRateChart) { netRateChart.destroy(); netRateChart = null; }
+    }
+
+    // ── 輔助 ─────────────────────────────────────────────────────────────────
+    function fmtNum(n) { return n >= 0 ? `+${n.toLocaleString()}` : n.toLocaleString(); }
+
+    function toggleTheme() {
+        const html = document.documentElement;
+        html.classList.toggle('dark');
+        localStorage.setItem('theme', html.classList.contains('dark') ? 'dark' : 'light');
+        document.getElementById('themeIcon').textContent = html.classList.contains('dark') ? '☀️' : '🌙';
+        if (allData.length) { renderRadar(); renderNetRateChart(); }
+    }
+    if (document.documentElement.classList.contains('dark'))
+        document.getElementById('themeIcon').textContent = '☀️';
+
+    window.addEventListener('load', async () => {
+        await loadFromServer();
+    });
+
+    async function loadFromServer() {
+        document.getElementById('loadingSection').classList.remove('hidden');
+        document.getElementById('mainSection').classList.add('hidden');
+        try {
+            const res = await fetch('./compare_data.json', { cache: 'no-store' });
+            if (!res.ok) throw new Error('not found');
+            const raw = await res.json();
+            // 支援兩種格式：純陣列 [...] 或包裝格式 {ok, data: [...]}
+            const data = Array.isArray(raw) ? raw : (raw.data || []);
+            document.getElementById('loadingSection').classList.add('hidden');
+            if (data.length) {
+                fullRawData = data;   // 保存完整原始資料供篩選用
+                allData = fullRawData.map(parseEntry);
+
+                // 自動填入資料的實際日期範圍到篩選器
+                const dates = fullRawData.flatMap(d => (d.daily_pnl || []).map(p => p.date));
+                let minD = '', maxD = '';
+                if (dates.length) {
+                    minD = dates.reduce((a,b) => a<b?a:b);
+                    maxD = dates.reduce((a,b) => a>b?a:b);
+                    const fmt = s => `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+                    document.getElementById('filterStart').value = fmt(minD);
+                    document.getElementById('filterEnd').value   = fmt(maxD);
+                    document.getElementById('dateRangeLabel').textContent =
+                        `全部資料（${fmt(minD)} ～ ${fmt(maxD)}）`;
+                }
+
+                const dpg = document.getElementById('datePickerGroup');
+                dpg.classList.remove('hidden'); dpg.classList.add('flex');
+                renderAll();
+                document.getElementById('autoLoadBadge').classList.remove('hidden');
+                document.getElementById('exportBtn').classList.remove('hidden');
+                const ct = document.getElementById('categoryTabs');
+                ct.classList.remove('hidden'); ct.classList.add('flex');
+            } else {
+                document.getElementById('loadingSection').classList.add('hidden');
+                document.getElementById('uploadSection').classList.remove('hidden');
+            }
+        } catch(e) {
+            document.getElementById('loadingSection').classList.add('hidden');
+            document.getElementById('uploadSection').classList.remove('hidden');
+        }
+    }
+
+</script>
+
+</body>
+</html>
