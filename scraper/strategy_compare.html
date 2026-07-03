@@ -35,9 +35,7 @@
         .rank-2 { background: linear-gradient(90deg, rgba(148,163,184,0.10), transparent); }
         .rank-3 { background: linear-gradient(90deg, rgba(180,120,60,0.10), transparent); }
         .metric-bar { height: 6px; border-radius: 3px; transition: width 0.4s; }
-        html.dark #swingWarnBanner { background: rgba(120,80,0,0.2) !important; border-color: #92400e !important; color: #fde68a !important; }
-        html.dark #swingWarnBanner code { background: rgba(120,80,0,0.3) !important; }
-        .tab-btn { background: #f1f5f9; color: #64748b; transition: all 0.15s; }
+.tab-btn { background: #f1f5f9; color: #64748b; transition: all 0.15s; }
         .tab-btn:hover { background: #e2e8f0; }
         .tab-active { background: #4f46e5 !important; color: #fff !important; }
         html.dark .tab-btn { background: #334155; color: #94a3b8; }
@@ -144,11 +142,6 @@
             </div>
             <span class="text-xs text-gray-400" id="strategyCount"></span>
         </div>
-        <!-- 波段策略篩選警告橫幅 -->
-        <div id="swingWarnBanner" class="hidden mx-4 mb-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-xs text-amber-800">
-            <span class="text-base leading-none mt-0.5">⚠</span>
-            <span>目前套用了日期篩選。<strong>波段策略</strong>的持倉可能跨越篩選邊界（開倉日早於起始日、或收盤日晚於結束日），區間數據與 IBFF 官網可能有顯著偏差。組合策略（當沖）影響較小。如需精確對比，請在終端機執行：<code class="bg-amber-100 px-1 rounded font-mono">python strategy_scraper.py &lt;代碼&gt; &lt;開始日期&gt; &lt;結束日期&gt;</code></span>
-        </div>
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm" id="compareTable">
                 <thead class="bg-gray-50 text-gray-600 border-b text-xs">
@@ -245,41 +238,56 @@
     let filterEndStr   = '';
 
     function calcStatsFromRange(rawData, startStr, endStr) {
-        // rawData: 單一策略的完整 JSON（含 trades, daily_pnl, info）
-        const trades = (rawData.trades || []).filter(t => t.date >= startStr && t.date <= endStr);
-        const daily  = (rawData.daily_pnl || []).filter(d => d.date >= startStr && d.date <= endStr);
+        const allDaily  = rawData.daily_pnl || [];
+        const allTrades = rawData.trades    || [];
 
-        let gross_win = 0, gross_loss = 0, win_times = 0, loss_times = 0, net_pnl = 0;
+        // ── 邊界基準值（區間開始前一天的累積實現 + 浮動） ──────────────────
+        const dayBefore = [...allDaily].filter(d => d.date < startStr).pop();
+        const dayAtEnd  = [...allDaily].filter(d => d.date <= endStr).pop();
+        const baseCum   = dayBefore?.cum_profit   ?? 0;
+        const baseFloat = dayBefore?.daily_float  ?? 0;
+        const endCum    = dayAtEnd?.cum_profit    ?? 0;
+        const endFloat  = dayAtEnd?.daily_float   ?? 0;
+
+        // 區間淨損益 = (實現累積差) + (浮動損益變化) ← 對齊 IBFF 算法
+        const net_closed = endCum   - baseCum;
+        const floating   = endFloat - baseFloat;
+        const net_pnl    = net_closed + floating;
+
+        // ── 交易統計（以平倉日在範圍內為準） ────────────────────────────────
+        const trades = allTrades.filter(t => t.date >= startStr && t.date <= endStr);
+        let gross_win = 0, gross_loss = 0, win_times = 0, loss_times = 0;
         for (const t of trades) {
-            net_pnl += t.net_pnl;
-            if (t.raw_pnl > 0)      { gross_win  += t.raw_pnl;            win_times++;  }
-            else if (t.raw_pnl < 0) { gross_loss += Math.abs(t.raw_pnl);  loss_times++; }
+            if (t.raw_pnl > 0)      { gross_win  += t.raw_pnl;           win_times++;  }
+            else if (t.raw_pnl < 0) { gross_loss += Math.abs(t.raw_pnl); loss_times++; }
         }
 
-        // 重算累積損益曲線 + 最大回撤
-        let cum = 0, maxCum = 0, maxDD = 0;
+        // ── 權益曲線（含每日浮動，對齊 IBFF 回撤計算） ──────────────────────
+        const daily = allDaily.filter(d => d.date >= startStr && d.date <= endStr);
+        const startOffset = baseCum + baseFloat;
+        let maxEquity = 0, maxDD = 0;
         const newDaily = daily.map(d => {
-            cum += d.day_profit;
-            if (cum > maxCum) maxCum = cum;
-            const dd = maxCum - cum;
+            const relEquity = (d.cum_profit + (d.daily_float ?? 0)) - startOffset;
+            if (relEquity > maxEquity) maxEquity = relEquity;
+            const dd = maxEquity - relEquity;
             if (dd > maxDD) maxDD = dd;
-            return { ...d, cum_profit: Math.round(cum * 1e4) / 1e4 };
+            return { ...d, cum_profit: Math.round(relEquity * 1e4) / 1e4 };
         });
 
         const total = win_times + loss_times;
         const pf    = gross_loss > 0 ? gross_win / gross_loss : Infinity;
-        const aw    = win_times  > 0 ? gross_win  / win_times  : 0;
+        const aw    = win_times  > 0 ? gross_win / win_times  : 0;
         const al    = loss_times > 0 ? gross_loss / loss_times : 0;
         const pr    = al > 0 ? aw / al : Infinity;
         const cost  = rawData.info?.cost_points ?? 0;
 
         return {
-            website_total_pnl:   Math.round((gross_win - gross_loss) * 100) / 100,
-            net_closed_pnl:      Math.round(net_pnl * 100) / 100,
-            floating_pnl:        0,   // 篩選模式下不追蹤浮動損益
+            website_total_pnl:   Math.round(net_pnl * 100) / 100,
+            net_closed_pnl:      Math.round(net_closed * 100) / 100,
+            floating_pnl:        Math.round(floating * 100) / 100,
             total_cost:          total * cost,
             max_drawdown_points: Math.round(maxDD * 100) / 100,
-            peak_profit:         Math.round(maxCum * 100) / 100,
+            peak_profit:         Math.round(maxEquity * 100) / 100,
             total_trades:        total,
             win_times, loss_times,
             win_rate_pct:        total > 0 ? Math.round(win_times / total * 10000) / 100 : 0,
@@ -302,7 +310,6 @@
         filterStartStr = fs.replace(/-/g, '');
         filterEndStr   = fe.replace(/-/g, '');
         document.getElementById('dateRangeLabel').textContent = `篩選範圍：${fs} ～ ${fe}`;
-        document.getElementById('swingWarnBanner').classList.remove('hidden');
         rebuildAllData();
     }
 
@@ -423,7 +430,6 @@
             document.getElementById('filterEnd').value   = fmt(maxD);
         }
         document.getElementById('dateRangeLabel').textContent = '全部資料';
-        document.getElementById('swingWarnBanner').classList.add('hidden');
         rebuildAllData();
     }
 
@@ -492,7 +498,6 @@
                 <td class="p-3 text-left font-mono text-xs text-indigo-600">${d.code}</td>
                 <td class="p-3 text-left text-gray-700 text-xs max-w-[220px]" title="${d.name}">
                     <span class="truncate block">${d.name}</span>
-                    ${filterStartStr && filterEndStr && d.category === '波段' ? '<span class="inline-block mt-0.5 text-amber-500 text-xs" title="波段策略持倉可能跨越篩選邊界，區間數據與官網可能偏差">⚠ 數據可能偏差</span>' : ''}
                 </td>
                 <td class="p-3 text-right font-bold ${pnlColor}">
                     ${d.netRate !== null ? d.netRate.toFixed(2)+'%' : '—'}

@@ -98,7 +98,7 @@ def calc_stats(info: dict, daily_data: list) -> dict:
     P&L = (平倉價 - 開倉價) * 方向 * -1 - 成本
     """
     cost = info["cost_points"]
-    in_queue = []          # 未平倉部位 FIFO: (direction, open_price)
+    in_queue = []          # 未平倉部位 FIFO: (direction, open_price, open_date)
 
     gross_win  = 0.0
     gross_loss = 0.0
@@ -135,12 +135,12 @@ def calc_stats(info: dict, daily_data: list) -> dict:
 
             if oc == "O":
                 for _ in range(abs_qty):
-                    in_queue.append((direction, price))
+                    in_queue.append((direction, price, date_str))
             elif oc == "C" and in_queue:
                 for _ in range(abs_qty):
                     if not in_queue:
                         break
-                    open_dir, open_price = in_queue.pop(0)
+                    open_dir, open_price, open_date = in_queue.pop(0)
                     raw_pnl  = (price - open_price) * open_dir   # 毛利
                     net_pnl  = round((raw_pnl - cost) * 1e7) / 1e7
                     day_profit += net_pnl
@@ -154,6 +154,7 @@ def calc_stats(info: dict, daily_data: list) -> dict:
                         loss_times += 1
 
                     trade_records.append({
+                        "open_date":   open_date,
                         "date":        date_str,
                         "open_price":  open_price,
                         "close_price": price,
@@ -170,21 +171,27 @@ def calc_stats(info: dict, daily_data: list) -> dict:
         if drawdown > max_drawdown:
             max_drawdown = drawdown
 
+        # 每日收盤時的未平倉浮動損益（用於前端精確區間計算）
+        daily_float = sum(
+            round((index_val - op) * od * 1e7) / 1e7
+            for od, op, _ in in_queue
+        )
         daily_pnl.append({
             "date":        date_str,
             "index":       index_val,
             "day_profit":  round(day_profit, 4),
             "cum_profit":  round(sum_profit, 4),
+            "daily_float": round(daily_float, 4),
         })
 
     # 未平倉浮動損益（對應 JS holdProfit）
     hold_profit = sum(
         round((last_index - op) * od * 1e7) / 1e7
-        for od, op in in_queue
+        for od, op, _ in in_queue
     )
     open_positions = [
         {"direction": "多" if od > 0 else "空", "open_price": op}
-        for od, op in in_queue
+        for od, op, _ in in_queue
     ]
 
     total_trades  = win_times + loss_times
