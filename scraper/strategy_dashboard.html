@@ -293,39 +293,33 @@
 </div>
 
 <script>
-    // ── 總評分 ────────────────────────────────────────────────────────────
-    function computeScore(s, totalPnl, netPnl) {
-        let score = 0;
-
-        // 風報比（25 pts）：總報酬 ÷ 最大回撤
-        const rr = s.max_drawdown_points > 0 ? totalPnl / s.max_drawdown_points : 0;
-        score += rr >= 5 ? 25 : rr >= 3 ? 20 : rr >= 2 ? 15 : rr >= 1 ? 10 : rr > 0 ? 5 : 0;
-
-        // 勝率（20 pts）
-        const wr = s.win_rate_pct;
-        score += wr >= 60 ? 20 : wr >= 50 ? 15 : wr >= 40 ? 10 : 5;
-
-        // 獲利因子（20 pts）
-        const pf = s.profit_factor;
-        score += pf >= 2.0 ? 20 : pf >= 1.5 ? 15 : pf >= 1.2 ? 10 : pf >= 1.0 ? 5 : 0;
-
-        // 賺賠比（20 pts）
-        const pr = s.pnl_ratio;
-        score += pr >= 2.0 ? 20 : pr >= 1.5 ? 15 : pr >= 1.0 ? 10 : 5;
-
-        // 期望值/筆（15 pts）
-        const exp = s.total_trades > 0 ? netPnl / s.total_trades : 0;
-        score += exp >= 100 ? 15 : exp >= 50 ? 12 : exp >= 20 ? 9 : exp >= 0 ? 5 : 0;
-
-        return Math.round(score);
+    // ── IBFF NOPRW 評分 ────────────────────────────────────────────────────
+    function computeScore(s, totalPnl, netRate, category) {
+        const trades = s.total_trades ?? 0;
+        if (trades === 0 || netRate === null || netRate === undefined) return null;
+        const T   = /當沖|組合/.test(category) ? 104 : 24;
+        const lnt = Math.log(trades / T);
+        const TR  = 1 + lnt / (1 + Math.abs(lnt));
+        const N   = netRate / 100;
+        const O   = (s.win_rate_pct ?? 0) / 100;
+        const P   = Math.min(isFinite(s.profit_factor) ? (s.profit_factor ?? 0) : 9999, 9999);
+        const R   = s.max_drawdown_points > 0 ? totalPnl / s.max_drawdown_points : 0;
+        const W   = Math.min(isFinite(s.pnl_ratio)     ? (s.pnl_ratio     ?? 0) : 9999, 9999);
+        const nv  = (v => v / (1 + v))(Math.exp(N) * TR);
+        const ov  = (v => v / (1 + v))(Math.exp(O) * TR);
+        const pv  = (v => v / (1 + v))(P * TR);
+        const rv  = (v => v / (1 + v))(R * TR);
+        const wv  = (v => v / (1 + v))(W * TR);
+        return Math.round((nv + ov + pv + rv + wv) / 5 * 10000) / 100;
     }
 
     function getScoreGrade(score) {
-        if (score >= 85) return { label: 'S　頂尖策略', color: 'text-yellow-500' };
-        if (score >= 70) return { label: 'A　優秀策略', color: 'text-green-600' };
-        if (score >= 55) return { label: 'B　良好策略', color: 'text-blue-600' };
-        if (score >= 40) return { label: 'C　普通策略', color: 'text-gray-500' };
-        return { label: 'D　偏弱策略', color: 'text-red-500' };
+        if (score === null) return { label: '—　數據不足',  color: 'text-gray-400' };
+        if (score >= 85)    return { label: 'S　頂尖策略', color: 'text-yellow-500' };
+        if (score >= 75)    return { label: 'A　優秀策略', color: 'text-green-600' };
+        if (score >= 60)    return { label: 'B　良好策略', color: 'text-blue-600' };
+        if (score >= 45)    return { label: 'C　普通策略', color: 'text-gray-500' };
+        return                     { label: 'D　偏弱策略', color: 'text-red-500' };
     }
 
     // ── Theme ─────────────────────────────────────────────────────────────
@@ -642,10 +636,12 @@
             `均獲 ${s.avg_win_points} / 均虧 ${s.avg_loss_points}`;
 
         // 🏆 總評分
-        const score = computeScore(s, totalPnl, netPnl);
+        const netRateVal = suggestedCapital ? netPnl * tickValue / suggestedCapital * 100 : null;
+        const tradeStyle = d.strategy_category || d.info?.trade_style || '';
+        const score = computeScore(s, totalPnl, netRateVal, tradeStyle);
         const gradeInfo = getScoreGrade(score);
         const scoreEl = document.getElementById('cardScore');
-        scoreEl.textContent = `${score} / 100`;
+        scoreEl.textContent = score !== null ? `${score} / 100` : '— / 100';
         scoreEl.className = 'text-2xl font-black ' + gradeInfo.color;
         const gradeEl = document.getElementById('cardScoreGrade');
         gradeEl.textContent = gradeInfo.label;

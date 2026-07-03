@@ -313,27 +313,32 @@
         rebuildAllData();
     }
 
-    // ── 評分（同 dashboard）────────────────────────────────────────────────
-    function computeScore(s, netPnl) {
-        let score = 0;
-        const rr = s.max_drawdown_points > 0 ? netPnl / s.max_drawdown_points : 0;
-        score += rr >= 5 ? 25 : rr >= 3 ? 20 : rr >= 2 ? 15 : rr >= 1 ? 10 : rr > 0 ? 5 : 0;
-        const wr = s.win_rate_pct;
-        score += wr >= 60 ? 20 : wr >= 50 ? 15 : wr >= 40 ? 10 : 5;
-        const pf = s.profit_factor;
-        score += pf >= 2.0 ? 20 : pf >= 1.5 ? 15 : pf >= 1.2 ? 10 : pf >= 1.0 ? 5 : 0;
-        const pr = s.pnl_ratio;
-        score += pr >= 2.0 ? 20 : pr >= 1.5 ? 15 : pr >= 1.0 ? 10 : 5;
-        const exp = s.total_trades > 0 ? netPnl / s.total_trades : 0;
-        score += exp >= 100 ? 15 : exp >= 50 ? 12 : exp >= 20 ? 9 : exp >= 0 ? 5 : 0;
-        return Math.round(score);
+    // ── IBFF NOPRW 評分 ────────────────────────────────────────────────────
+    function computeScore(s, totalPnl, netRate, category) {
+        const trades = s.total_trades ?? 0;
+        if (trades === 0 || netRate === null || netRate === undefined) return null;
+        const T   = /當沖|組合/.test(category) ? 104 : 24;
+        const lnt = Math.log(trades / T);
+        const TR  = 1 + lnt / (1 + Math.abs(lnt));
+        const N   = netRate / 100;
+        const O   = (s.win_rate_pct ?? 0) / 100;
+        const P   = Math.min(isFinite(s.profit_factor) ? (s.profit_factor ?? 0) : 9999, 9999);
+        const R   = s.max_drawdown_points > 0 ? totalPnl / s.max_drawdown_points : 0;
+        const W   = Math.min(isFinite(s.pnl_ratio)     ? (s.pnl_ratio     ?? 0) : 9999, 9999);
+        const nv  = (v => v / (1 + v))(Math.exp(N) * TR);
+        const ov  = (v => v / (1 + v))(Math.exp(O) * TR);
+        const pv  = (v => v / (1 + v))(P * TR);
+        const rv  = (v => v / (1 + v))(R * TR);
+        const wv  = (v => v / (1 + v))(W * TR);
+        return Math.round((nv + ov + pv + rv + wv) / 5 * 10000) / 100;
     }
     function gradeLabel(score) {
-        if (score >= 85) return { label: 'S', color: 'text-yellow-500', bg: 'bg-yellow-50' };
-        if (score >= 70) return { label: 'A', color: 'text-green-600', bg: 'bg-green-50' };
-        if (score >= 55) return { label: 'B', color: 'text-blue-600', bg: 'bg-blue-50' };
-        if (score >= 40) return { label: 'C', color: 'text-gray-500', bg: 'bg-gray-50' };
-        return { label: 'D', color: 'text-red-500', bg: 'bg-red-50' };
+        if (score === null) return { label: '—',  color: 'text-gray-400',   bg: 'bg-gray-50' };
+        if (score >= 85)    return { label: 'S',  color: 'text-yellow-500', bg: 'bg-yellow-50' };
+        if (score >= 75)    return { label: 'A',  color: 'text-green-600',  bg: 'bg-green-50' };
+        if (score >= 60)    return { label: 'B',  color: 'text-blue-600',   bg: 'bg-blue-50' };
+        if (score >= 45)    return { label: 'C',  color: 'text-gray-500',   bg: 'bg-gray-50' };
+        return                     { label: 'D',  color: 'text-red-500',    bg: 'bg-red-50' };
     }
 
     // ── 解析單個 JSON ───────────────────────────────────────────────────────
@@ -342,24 +347,24 @@
         const product = (d.info?.products ?? []).find(p => p.tick_value) ?? {};
         const tv = product.tick_value ?? 1;
         const cap = d.info?.suggested_capital ?? PRODUCT_CAPITAL[product.code] ?? null;
-        const netPnl = (s.net_closed_pnl ?? 0) + (s.floating_pnl ?? 0);
-        const netRate = cap ? netPnl * tv / cap * 100 : null;
+        const netPnl   = (s.net_closed_pnl ?? 0) + (s.floating_pnl ?? 0);
+        const totalPnl = s.website_total_pnl ?? 0;
+        const category = d.strategy_category ?? '';
+        const netRate  = cap ? netPnl * tv / cap * 100 : null;
         const drawdownPct = cap ? s.max_drawdown_points * tv / cap * 100 : null;
         const rr = s.max_drawdown_points > 0 ? netPnl / s.max_drawdown_points : null;
         const expected = s.total_trades > 0 ? netPnl / s.total_trades : 0;
-        const score = computeScore(s, netPnl);
+        const score = computeScore(s, totalPnl, netRate, category);
         return {
             code:        d.strategy_code,
             name:        d.strategy_name ?? d.info?.name ?? d.strategy_code,
-            netRate, netPnl, drawdownPct, rr, expected, score,
-            totalPnl:    s.website_total_pnl ?? 0,
+            netRate, netPnl, totalPnl, drawdownPct, rr, expected, score, category,
             drawdown:    s.max_drawdown_points,
             winRate:     s.win_rate_pct,
             pf:          s.profit_factor,
             pr:          s.pnl_ratio,
             trades:      s.total_trades,
             tv, cap,
-            category:    d.strategy_category ?? '',
             beginDate:   d.begin_date,
             endDate:     d.end_date,
             raw:         d,
@@ -439,7 +444,7 @@
         const sorted_rr  = [...allData].filter(d => d.rr !== null).sort((a,b) => b.rr - a.rr);
         const sorted_wr  = [...allData].sort((a,b) => b.winRate - a.winRate);
         const sorted_pf  = [...allData].sort((a,b) => b.pf - a.pf);
-        const sorted_sc  = [...allData].sort((a,b) => b.score - a.score);
+        const sorted_sc  = [...allData].filter(d => d.score !== null).sort((a,b) => b.score - a.score);
         const sorted_dd  = [...allData].sort((a,b) => a.drawdown - b.drawdown);
 
         const cards = [
@@ -448,7 +453,7 @@
             { icon: '🎯', label: '最高勝率',     d: sorted_wr[0],  val: d => d.winRate+'%', color: 'border-blue-400' },
             { icon: '📈', label: '最高獲利因子', d: sorted_pf[0],  val: d => d.pf, color: 'border-green-400' },
             { icon: '🛡️', label: '最小回撤',     d: sorted_dd[0],  val: d => '-'+d.drawdown.toLocaleString(), color: 'border-indigo-400' },
-            { icon: '🌟', label: '最高總評分',   d: sorted_sc[0],  val: d => d.score+'/100', color: 'border-purple-400' },
+            { icon: '🌟', label: '最高總評分',   d: sorted_sc[0],  val: d => d.score !== null ? d.score+'/100' : '—', color: 'border-purple-400' },
         ];
         const container = document.getElementById('topCards');
         container.innerHTML = cards.map(c => `
@@ -523,7 +528,7 @@
                 <td class="p-3 text-right text-gray-500">${d.trades.toLocaleString()}</td>
                 <td class="p-3 text-right">
                     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${grade.color} ${grade.bg}">
-                        ${grade.label} ${d.score}
+                        ${grade.label}${d.score !== null ? ' ' + d.score : ''}
                     </span>
                 </td>
                 <td class="p-3 text-center text-indigo-500 text-xs hover:underline">詳情 →</td>
