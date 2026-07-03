@@ -282,7 +282,7 @@
         const cost  = rawData.info?.cost_points ?? 0;
 
         return {
-            website_total_pnl:   Math.round(net_pnl * 100) / 100,
+            website_total_pnl:   Math.round((net_pnl + total * cost) * 100) / 100,
             net_closed_pnl:      Math.round(net_closed * 100) / 100,
             floating_pnl:        Math.round(floating * 100) / 100,
             total_cost:          total * cost,
