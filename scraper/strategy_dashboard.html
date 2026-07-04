@@ -928,6 +928,8 @@
         try {
             const d = JSON.parse(raw);
             renderDashboard(d);
+            // 清掉 URL 中的 _t 參數，保持網址整潔
+            history.replaceState(null, '', 'strategy_dashboard.html?from=compare');
             const btn = document.getElementById('backToCompareBtn');
             btn.textContent = '← 返回比較表';
             btn.onclick = () => history.back();
