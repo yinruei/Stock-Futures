@@ -278,7 +278,7 @@
             <button onclick="resetTradeChartZoom()"
                     class="px-2 py-1 border text-gray-500 rounded hover:text-gray-700 transition ml-auto">⟳ 重置縮放</button>
         </div>
-        <p class="text-xs text-gray-400 mb-2">K 棒：每天 2 根（日盤 08:45–13:30 ／ 夜盤 15:00–次日 05:00）。<span class="text-red-400">紅漲</span>／<span class="text-green-500">綠跌</span>（台灣慣例）。滑鼠滾輪縮放、拖曳平移。</p>
+        <p class="text-xs text-gray-400 mb-2">日 K 棒（開=日盤開盤、高/低=全日、收=夜盤收盤）。<span class="text-red-400">紅漲</span>／<span class="text-green-500">綠跌</span>（台灣慣例）。滾輪縮放、拖曳平移、十字游標 hover。</p>
         <div class="relative" style="height:420px">
             <canvas id="tradeChart"></canvas>
         </div>
@@ -782,6 +782,27 @@
         return new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(8,10)}:${s.slice(10,12)}:00+08:00`);
     }
 
+    // 將日/夜盤兩根合併成一根日 K（open=日盤開、high=兩盤最高、low=兩盤最低、close=夜盤收）
+    function mergeToDaily(bars) {
+        const map = new Map();
+        for (const b of bars) {
+            const date = b.dt.slice(0, 8);
+            if (!map.has(date)) {
+                map.set(date, { o: b.o, h: b.h, l: b.l, c: b.c });
+            } else {
+                const d = map.get(date);
+                d.h = Math.max(d.h, b.h);
+                d.l = Math.min(d.l, b.l);
+                d.c = b.c;   // 後面那根（夜盤）的收盤價
+            }
+        }
+        return [...map.entries()].map(([date, d]) => ({
+            dt: date + '0000',
+            session: 'daily',
+            o: d.o, h: d.h, l: d.l, c: d.c,
+        }));
+    }
+
     // 找 tradeDate 當天 close 最接近 price 的 OHLC bar → 傳回其索引（供線性 X 軸定位）
     function findMarkerIndex(ohlcBars, date8, price) {
         const dayPairs = ohlcBars.map((b, i) => ({ b, i })).filter(({ b }) => b.dt.startsWith(date8));
@@ -860,7 +881,7 @@
         );
 
         const ohlcInRange = useOHLC
-            ? futuresOHLC.filter(b => b.dt.slice(0,8) >= startStr && b.dt.slice(0,8) <= endStr)
+            ? mergeToDaily(futuresOHLC.filter(b => b.dt.slice(0,8) >= startStr && b.dt.slice(0,8) <= endStr))
             : [];
 
         const entryData = filteredTrades.map(t => ({
@@ -990,8 +1011,7 @@
                                     const b = item.raw._bar;
                                     if (!b) return '';
                                     const dt = String(b.dt);
-                                    const sess = b.session === 'day' ? '日盤' : '夜盤';
-                                    return `${dt.slice(0,4)}/${dt.slice(4,6)}/${dt.slice(6,8)} ${sess}`;
+                                    return `${dt.slice(0,4)}/${dt.slice(4,6)}/${dt.slice(6,8)}`;
                                 }
                                 const t = filteredTrades[item.dataIndex];
                                 if (!t) return '';
