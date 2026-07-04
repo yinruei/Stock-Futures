@@ -1004,12 +1004,6 @@
                     y: {
                         ticks: { color: axisColor },
                         grid:  { color: gridCol },
-                        ...(useOHLC && ohlcInRange.length ? (() => {
-                            const minL = ohlcInRange.reduce((m, b) => Math.min(m, b.l), Infinity);
-                            const maxH = ohlcInRange.reduce((m, b) => Math.max(m, b.h), -Infinity);
-                            const pad  = (maxH - minL) * 0.02;
-                            return { min: minL - pad, max: maxH + pad };
-                        })() : {}),
                     },
                 },
                 plugins: {
@@ -1063,15 +1057,12 @@
                             wheel: { enabled: true, speed: 0.08 },
                             pinch: { enabled: true },
                             mode: 'x',
-                            onZoomComplete: useOHLC ? ({ chart }) => fitYToVisible(chart, ohlcInRange) : undefined,
                         },
-                        pan: {
-                            enabled: true,
-                            mode: 'x',
-                            onPanComplete: useOHLC ? ({ chart }) => fitYToVisible(chart, ohlcInRange) : undefined,
-                        },
+                        pan: { enabled: true, mode: 'x' },
                         ...(useOHLC ? {
                             limits: { x: { min: 0, max: ohlcInRange.length - 1, minRange: 2 } },
+                            onZoomComplete: ({ chart }) => fitYToVisible(chart, ohlcInRange),
+                            onPanComplete:  ({ chart }) => fitYToVisible(chart, ohlcInRange),
                         } : {
                             limits: { x: { min: 'original', max: 'original' } },
                         }),
@@ -1080,7 +1071,13 @@
             }
         });
         // 讓插件 ohlcDraw 能讀取 OHLC 資料
-        if (useOHLC) charts['tradeChart']._ohlcBars = ohlcInRange;
+        if (useOHLC) {
+            charts['tradeChart']._ohlcBars = ohlcInRange;
+            // 初始渲染後立即調整 Y 軸到可見範圍
+            requestAnimationFrame(() => {
+                if (charts['tradeChart']) fitYToVisible(charts['tradeChart'], ohlcInRange);
+            });
+        }
 
         // ── 十字游標 ──────────────────────────────────────────────────────────
         const mainCanvas = document.getElementById('tradeChart');
