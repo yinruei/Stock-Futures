@@ -377,6 +377,69 @@
     let charts = {};
     let futuresOHLC = null;  // 台指期日/夜盤 OHLC，由 futures_ohlc.json 載入
 
+    // ── 全域注冊 K 棒繪製插件 ─────────────────────────────────────────────────
+    // 用 Chart.register 確保插件一定執行，不依賴 inline plugin 機制
+    // 只對 dataset[0].data[0].o != null 的圖表作用，其他圖表直接 return
+    Chart.register({
+        id: 'ohlcDraw',
+        afterDatasetsDraw(chart) {
+            const ds = chart.data.datasets?.[0];
+            if (!ds?.data?.length || ds.data[0]?.o == null) return;
+
+            const meta = chart.getDatasetMeta(0);
+            if (!meta?.data?.length) return;
+
+            const { ctx, chartArea } = chart;
+            const yScale = chart.scales?.y;
+            if (!yScale || !chartArea) return;
+
+            // K 棒寬度：相鄰元素像素間距 × 65%，限 2–18px
+            let candleW = 4;
+            if (meta.data.length > 1) {
+                const gap = Math.abs(meta.data[1].x - meta.data[0].x);
+                candleW = Math.max(2, Math.min(gap * 0.65, 18));
+            }
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
+            ctx.clip();
+
+            meta.data.forEach((el, i) => {
+                const bar = ds.data[i];
+                if (!bar || bar.o == null) return;
+
+                const xPx = el.x;  // Chart.js 已算好的像素 x
+                const oPx = yScale.getPixelForValue(bar.o);
+                const cPx = yScale.getPixelForValue(bar.c);
+                const hPx = yScale.getPixelForValue(bar.h);
+                const lPx = yScale.getPixelForValue(bar.l);
+
+                const isUp   = bar.c >= bar.o;
+                const fill   = isUp ? 'rgba(239,68,68,0.85)' : 'rgba(34,197,94,0.85)';
+                const stroke = isUp ? 'rgb(220,38,38)'        : 'rgb(22,163,74)';
+
+                // 影線
+                ctx.beginPath();
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = 1;
+                ctx.moveTo(xPx, hPx);
+                ctx.lineTo(xPx, lPx);
+                ctx.stroke();
+
+                // 實體
+                const bodyTop = Math.min(oPx, cPx);
+                const bodyH   = Math.max(Math.abs(cPx - oPx), 1);
+                ctx.fillStyle = fill;
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = 0.5;
+                ctx.fillRect(xPx - candleW / 2, bodyTop, candleW, bodyH);
+                ctx.strokeRect(xPx - candleW / 2, bodyTop, candleW, bodyH);
+            });
+            ctx.restore();
+        }
+    });
+
     function handleDragOver(e) {
         e.preventDefault();
         document.getElementById('dropZone').classList.add('drag-over');
@@ -720,71 +783,6 @@
         return new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(8,10)}:${s.slice(10,12)}:00+08:00`);
     }
 
-    // 自訂 K 棒繪製插件（不依賴 chartjs-chart-financial）
-    // 使用 chart.getDatasetMeta(0).data[i].x 取得 Chart.js 已計算好的像素 x 座標
-    // 避免直接呼叫 xScale.getPixelForValue(Date) 的時區轉換問題
-    const candlestickPlugin = {
-        id: 'ohlcDraw',
-        afterDatasetsDraw(chart) {
-            const dsIdx = 0;
-            const ds = chart.data.datasets[dsIdx];
-            // 只有資料點含 o/h/l/c 欄位時才繪製
-            if (!ds || !ds.data.length || ds.data[0].o == null) return;
-
-            const meta = chart.getDatasetMeta(dsIdx);
-            if (!meta || !meta.data.length) return;
-
-            const { ctx, chartArea, scales: { y: yScale } } = chart;
-            if (!yScale || !chartArea) return;
-
-            // K 棒寬度：相鄰兩個元素的像素間距 × 65%，最小 2px，最大 18px
-            let candleW = 4;
-            if (meta.data.length > 1) {
-                candleW = Math.max(2, Math.min(
-                    Math.abs(meta.data[1].x - meta.data[0].x) * 0.65, 18
-                ));
-            }
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
-            ctx.clip();
-
-            meta.data.forEach((element, i) => {
-                const bar = ds.data[i];
-                if (!bar || bar.o == null) return;
-
-                const xPx = element.x;                       // Chart.js 已算好的像素 x
-                const oPx = yScale.getPixelForValue(bar.o);
-                const cPx = yScale.getPixelForValue(bar.c);
-                const hPx = yScale.getPixelForValue(bar.h);
-                const lPx = yScale.getPixelForValue(bar.l);
-
-                const isUp   = bar.c >= bar.o;
-                const fill   = isUp ? 'rgba(239,68,68,0.85)' : 'rgba(34,197,94,0.85)';  // 台灣：紅漲綠跌
-                const stroke = isUp ? 'rgb(220,38,38)'        : 'rgb(22,163,74)';
-
-                // 影線（高低）
-                ctx.beginPath();
-                ctx.strokeStyle = stroke;
-                ctx.lineWidth = 1;
-                ctx.moveTo(xPx, hPx);
-                ctx.lineTo(xPx, lPx);
-                ctx.stroke();
-
-                // 實體（開收）
-                const bodyTop = Math.min(oPx, cPx);
-                const bodyH   = Math.max(Math.abs(cPx - oPx), 1);
-                ctx.fillStyle = fill;
-                ctx.strokeStyle = stroke;
-                ctx.lineWidth = 0.5;
-                ctx.fillRect(xPx - candleW / 2, bodyTop, candleW, bodyH);
-                ctx.strokeRect(xPx - candleW / 2, bodyTop, candleW, bodyH);
-            });
-            ctx.restore();
-        }
-    };
-
     // 找 tradeDate 當天 close 最接近 price 的 OHLC bar → 傳回其 Date
     function findMarkerTime(ohlcBars, date8, price) {
         const dayBars = ohlcBars.filter(b => b.dt.startsWith(date8));
@@ -891,6 +889,8 @@
             backgroundColor: 'transparent',
             borderWidth: 0,
             pointRadius: 0,
+            pointHoverRadius: 0,
+            pointHitRadius: 0,               // 不吃滑鼠事件，避免干擾進出場 tooltip
             tension: 0,
             order: 3,
             yAxisID: 'y',
@@ -909,7 +909,6 @@
 
         const ctx = document.getElementById('tradeChart').getContext('2d');
         charts['tradeChart'] = new Chart(ctx, {
-            plugins: useOHLC ? [candlestickPlugin] : [],
             type: 'scatter',
             data: {
                 datasets: [
