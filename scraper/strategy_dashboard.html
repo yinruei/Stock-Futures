@@ -377,54 +377,63 @@
     let charts = {};
     let futuresOHLC = null;  // 台指期日/夜盤 OHLC，由 futures_ohlc.json 載入
 
-    // ── 全域注冊影線繪製插件 ──────────────────────────────────────────────────
-    // K 棒實體由 floating bar（type:'bar', y:[open,close]）原生繪製
-    // 插件只補上下影線（high→body top，body bottom→low）
-    // 以 dataset[0].data[0]._h != null 辨識 OHLC 圖表，對其他圖表直接 return
+    // ── 全域注冊 K 棒繪製插件 ───────────────────────────────────────────────
+    // chart._ohlcBars 設置後才會作畫；其他圖表不設此屬性，直接跳過
+    // 用 xScale/yScale.getPixelForValue() 換算，縮放/平移後自動更新
     Chart.register({
         id: 'ohlcDraw',
-        afterDatasetsDraw(chart) {
-            const ds = chart.data.datasets?.[0];
-            if (!ds?.data?.length || ds.data[0]?._h == null) return;
+        afterDraw(chart) {
+            const bars = chart._ohlcBars;
+            if (!bars || !bars.length) return;
 
-            const meta = chart.getDatasetMeta(0);
-            if (!meta?.data?.length) return;
+            const { ctx, chartArea, scales } = chart;
+            const xScale = scales.x, yScale = scales.y;
+            if (!xScale || !yScale || !chartArea) return;
 
-            const { ctx, chartArea, scales: { y: yScale } } = chart;
-            if (!yScale || !chartArea) return;
+            // 計算 K 棒寬度（根據相鄰兩根的像素距離，自動隨縮放調整）
+            let barW = 3;
+            if (bars.length >= 2) {
+                const p0 = xScale.getPixelForValue(parseDt(bars[0].dt));
+                const p1 = xScale.getPixelForValue(parseDt(bars[1].dt));
+                barW = Math.max(1, Math.abs(p1 - p0) * 0.65);
+            }
+            const halfW = barW / 2;
 
             ctx.save();
             ctx.beginPath();
             ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
             ctx.clip();
 
-            meta.data.forEach((el, i) => {
-                const bar = ds.data[i];
-                if (!bar?._h) return;
+            for (const b of bars) {
+                const xPx = xScale.getPixelForValue(parseDt(b.dt));
+                // 視口外跳過（加 barW buffer 避免裁切邊緣）
+                if (xPx < chartArea.left - barW || xPx > chartArea.right + barW) continue;
 
-                const xPx       = el.x;   // BarElement 的中心 x（Chart.js 原生計算）
-                const hPx       = yScale.getPixelForValue(bar._h);
-                const lPx       = yScale.getPixelForValue(bar._l);
-                const topBodyPx = Math.min(yScale.getPixelForValue(bar._o), yScale.getPixelForValue(bar._c));
-                const botBodyPx = Math.max(yScale.getPixelForValue(bar._o), yScale.getPixelForValue(bar._c));
+                const hPx = yScale.getPixelForValue(b.h);
+                const lPx = yScale.getPixelForValue(b.l);
+                const oPx = yScale.getPixelForValue(b.o);
+                const cPx = yScale.getPixelForValue(b.c);
 
-                const stroke = bar._c >= bar._o ? 'rgb(220,38,38)' : 'rgb(22,163,74)';
-                ctx.strokeStyle = stroke;
-                ctx.lineWidth = 1;
+                const isUp    = b.c >= b.o;
+                const color   = isUp ? 'rgb(220,38,38)' : 'rgb(22,163,74)';  // 紅漲綠跌
+                const bodyTop = Math.min(oPx, cPx);
+                const bodyBot = Math.max(oPx, cPx);
+                const bodyH   = Math.max(1, bodyBot - bodyTop);
 
-                if (hPx < topBodyPx - 0.5) {          // 上影線
-                    ctx.beginPath();
-                    ctx.moveTo(xPx, hPx);
-                    ctx.lineTo(xPx, topBodyPx);
-                    ctx.stroke();
-                }
-                if (lPx > botBodyPx + 0.5) {          // 下影線
-                    ctx.beginPath();
-                    ctx.moveTo(xPx, botBodyPx);
-                    ctx.lineTo(xPx, lPx);
-                    ctx.stroke();
-                }
-            });
+                ctx.strokeStyle = color;
+                ctx.fillStyle   = color;
+                ctx.lineWidth   = 1;
+
+                // 影線（一整根從 high 到 low）
+                ctx.beginPath();
+                ctx.moveTo(xPx, hPx);
+                ctx.lineTo(xPx, lPx);
+                ctx.stroke();
+
+                // 實體
+                ctx.fillRect(xPx - halfW, bodyTop, barW, bodyH);
+            }
+
             ctx.restore();
         }
     });
@@ -864,29 +873,16 @@
         const axisColor = tickColor();
         const gridCol   = gridColor();
 
-        // 價格資料集：有 OHLC → floating bar（y=[open,close]，實體由 Chart.js 原生繪製）
-        // 插件 ohlcDraw 再補上下影線。_h/_l/_o/_c 供插件與 tooltip 使用。
+        // 價格資料集：有 OHLC → 隱形 scatter（只提供 Y 軸範圍，K 棒由 ohlcDraw 插件繪製）
+        //                        收盤價 scatter 不影響互動（pointRadius/HoverRadius = 0）
         // 沒有 OHLC → 每日收盤折線（fallback）
         const priceDataset = useOHLC ? {
             label: '台指期 K棒',
-            type: 'bar',
-            data: ohlcInRange.map(b => ({
-                x: parseDt(b.dt),
-                y: [Math.min(b.o, b.c), Math.max(b.o, b.c)],   // floating bar 實體
-                _h: b.h, _l: b.l, _o: b.o, _c: b.c,
-                session: b.session,
-            })),
-            backgroundColor: ohlcInRange.map(b =>
-                b.c >= b.o ? 'rgba(239,68,68,0.85)' : 'rgba(34,197,94,0.85)'
-            ),
-            borderColor: ohlcInRange.map(b =>
-                b.c >= b.o ? 'rgb(220,38,38)' : 'rgb(22,163,74)'
-            ),
-            borderWidth: 0.5,
-            borderSkipped: false,
-            barPercentage: 0.8,
-            categoryPercentage: 1.0,
-            order: 4,        // 最先畫 → 在進出場標記後面
+            type: 'scatter',
+            data: ohlcInRange.map(b => ({ x: parseDt(b.dt), y: b.c, _bar: b })),
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            order: 4,
             yAxisID: 'y',
         } : {
             label: '台指期（日線）',
@@ -966,16 +962,16 @@
                         callbacks: {
                             label(ctx) {
                                 if (ctx.datasetIndex === 0) {
-                                    const r = ctx.raw;
-                                    if (useOHLC && r._h != null) {
-                                        const sess = r.session === 'day' ? '日盤' : '夜盤';
+                                    const b = ctx.raw._bar;
+                                    if (useOHLC && b) {
+                                        const sess = b.session === 'day' ? '日盤' : '夜盤';
                                         return [
                                             ` 台指期 ${sess}`,
-                                            ` 開 ${r._o.toLocaleString()}  高 ${r._h.toLocaleString()}`,
-                                            ` 低 ${r._l.toLocaleString()}  收 ${r._c.toLocaleString()}`,
+                                            ` 開 ${b.o.toLocaleString()}  高 ${b.h.toLocaleString()}`,
+                                            ` 低 ${b.l.toLocaleString()}  收 ${b.c.toLocaleString()}`,
                                         ];
                                     }
-                                    return ` 台指期 ${r.y?.toLocaleString?.() ?? ''}`;
+                                    return ` 台指期 ${ctx.raw.y?.toLocaleString?.() ?? ''}`;
                                 }
                                 const t = filteredTrades[ctx.dataIndex];
                                 if (!t) return '';
@@ -1000,6 +996,8 @@
                 }
             }
         });
+        // 讓插件 ohlcDraw 能讀取 OHLC 資料
+        if (useOHLC) charts['tradeChart']._ohlcBars = ohlcInRange;
     }
 
     function resetTradeChartZoom() {
