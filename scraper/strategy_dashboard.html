@@ -782,6 +782,21 @@
         return new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(8,10)}:${s.slice(10,12)}:00+08:00`);
     }
 
+    // 縮放/平移後，自動把 Y 軸收窄到可見 K 棒的 high/low 範圍
+    function fitYToVisible(chart, bars) {
+        const xScale = chart.scales.x;
+        const lo = Math.max(0, Math.floor(xScale.min));
+        const hi = Math.min(bars.length - 1, Math.ceil(xScale.max));
+        const slice = bars.slice(lo, hi + 1);
+        if (!slice.length) return;
+        const minL = slice.reduce((m, b) => Math.min(m, b.l), Infinity);
+        const maxH = slice.reduce((m, b) => Math.max(m, b.h), -Infinity);
+        const pad  = (maxH - minL) * 0.08;
+        chart.options.scales.y.min = minL - pad;
+        chart.options.scales.y.max = maxH + pad;
+        chart.update('none');
+    }
+
     // 將日/夜盤兩根合併成一根日 K（open=日盤開、high=兩盤最高、low=兩盤最低、close=夜盤收）
     function mergeToDaily(bars) {
         const map = new Map();
@@ -1048,8 +1063,13 @@
                             wheel: { enabled: true, speed: 0.08 },
                             pinch: { enabled: true },
                             mode: 'x',
+                            onZoomComplete: useOHLC ? ({ chart }) => fitYToVisible(chart, ohlcInRange) : undefined,
                         },
-                        pan: { enabled: true, mode: 'x' },
+                        pan: {
+                            enabled: true,
+                            mode: 'x',
+                            onPanComplete: useOHLC ? ({ chart }) => fitYToVisible(chart, ohlcInRange) : undefined,
+                        },
                         ...(useOHLC ? {
                             limits: { x: { min: 0, max: ohlcInRange.length - 1, minRange: 2 } },
                         } : {
