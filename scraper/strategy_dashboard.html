@@ -919,6 +919,21 @@
         renderTable();
         document.getElementById('tradeTableBody').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
+
+    // ── 從比較表跳過來時自動載入 ───────────────────────────────────────────────
+    window.addEventListener('load', () => {
+        if (new URLSearchParams(window.location.search).get('from') !== 'compare') return;
+        const raw = sessionStorage.getItem('compareData');
+        if (!raw) return;
+        try {
+            const d = JSON.parse(raw);
+            renderDashboard(d);
+            const btn = document.getElementById('backToCompareBtn');
+            btn.textContent = '← 返回比較表';
+            btn.onclick = () => history.back();
+            btn.classList.remove('hidden');
+        } catch(e) {}
+    });
 </script>
 </body>
 </html>
