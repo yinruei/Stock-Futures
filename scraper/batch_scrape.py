@@ -139,6 +139,15 @@ def scrape_all(begin_date: date, end_date: date):
     print_comparison(results)
     if all_outputs:
         save_compare_js(all_outputs)
+
+    # 台指期 OHLC（免費，FinMind）
+    print('\n[OHLC] 抓取台指期日/夜盤資料...')
+    try:
+        import fetch_ohlc
+        fetch_ohlc.run(begin_date, end_date)
+    except Exception as e:
+        print(f'  ✗ 台指期 OHLC 抓取失敗（跳過）：{e}')
+
     return results
 
 

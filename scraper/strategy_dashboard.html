@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         body { font-family: 'Helvetica Neue', Helvetica, Arial, '微軟正黑體', sans-serif; }
         html.dark body { background-color: #0f172a; color: #e2e8f0; }
@@ -249,6 +251,39 @@
         </div>
     </div>
 
+    <!-- 交易點位圖 -->
+    <div class="bg-white rounded-xl shadow-md p-6">
+        <div class="flex flex-wrap items-center gap-3 mb-3 border-b pb-3">
+            <h3 class="text-base font-bold text-gray-800">📍 交易點位圖</h3>
+            <div class="flex items-center gap-1.5 ml-auto text-xs text-gray-500 flex-wrap">
+                <span class="font-medium">進場</span>
+                <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-green-500 inline-block"></span>多</span>
+                <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-orange-400 inline-block"></span>空</span>
+                <span class="font-medium ml-2">出場</span>
+                <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>獲利</span>
+                <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>虧損</span>
+            </div>
+        </div>
+        <div class="flex gap-2 mb-3 items-center text-xs flex-wrap">
+            <span class="text-gray-500">資料範圍：</span>
+            <input type="date" id="tradeChartStart"
+                   class="border rounded px-2 py-1 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400">
+            <span class="text-gray-400">～</span>
+            <input type="date" id="tradeChartEnd"
+                   class="border rounded px-2 py-1 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400">
+            <button onclick="applyTradeChartRange()"
+                    class="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition font-semibold">套用</button>
+            <button onclick="resetTradeChartRange()"
+                    class="px-2 py-1 border text-gray-500 rounded hover:text-gray-700 transition">全部</button>
+            <button onclick="resetTradeChartZoom()"
+                    class="px-2 py-1 border text-gray-500 rounded hover:text-gray-700 transition ml-auto">⟳ 重置縮放</button>
+        </div>
+        <p class="text-xs text-gray-400 mb-2">折線：<span class="text-blue-400">藍 = 日盤</span>（08:45–13:30）／<span class="text-purple-400">紫 = 夜盤</span>（15:00–次日 05:00）。滑鼠滾輪縮放、拖曳平移。</p>
+        <div class="relative" style="height:420px">
+            <canvas id="tradeChart"></canvas>
+        </div>
+    </div>
+
     <!-- 交易明細表 -->
     <div class="bg-white rounded-xl shadow-md p-6 overflow-hidden">
         <div class="flex justify-between items-center mb-4 border-b pb-2">
@@ -340,6 +375,7 @@
     let currentTickValue = 1;   // 每點金額（TWD），載入後從商品資料取得
     const PAGE_SIZE = 20;
     let charts = {};
+    let futuresOHLC = null;  // 台指期日/夜盤 OHLC，由 futures_ohlc.json 載入
 
     function handleDragOver(e) {
         e.preventDefault();
@@ -672,6 +708,222 @@
         renderMonthly(d.monthly);
         renderWinLoss(d.stats);
         renderTradeDist(d.trades);
+        renderTradeChart(d.daily_pnl, d.trades);
+    }
+
+    // ── 交易點位圖 ────────────────────────────────────────────────────────────
+    let _tradeChartCtx = null;  // { daily, trades }
+
+    // YYYYMMDDHHMM → Date（台灣時區 +08:00）
+    function parseDt(dt) {
+        const s = String(dt);
+        return new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(8,10)}:${s.slice(10,12)}:00+08:00`);
+    }
+
+    // 找 tradeDate 當天 close 最接近 price 的 OHLC bar → 傳回其 Date
+    function findMarkerTime(ohlcBars, date8, price) {
+        const dayBars = ohlcBars.filter(b => b.dt.startsWith(date8));
+        if (!dayBars.length) return new Date(fmtDate(date8) + 'T11:00:00+08:00');
+        const closest = dayBars.reduce((best, b) =>
+            Math.abs(b.c - price) < Math.abs(best.c - price) ? b : best
+        );
+        return parseDt(closest.dt);
+    }
+
+    function applyTradeChartRange() {
+        if (!_tradeChartCtx) return;
+        const s = document.getElementById('tradeChartStart').value;
+        const e = document.getElementById('tradeChartEnd').value;
+        if (!s || !e) return;
+        renderTradeChart(_tradeChartCtx.daily, _tradeChartCtx.trades,
+            s.replace(/-/g, ''), e.replace(/-/g, ''));
+    }
+
+    function resetTradeChartRange() {
+        if (!_tradeChartCtx) return;
+        const { daily, trades } = _tradeChartCtx;
+        const start = daily[0]?.date ?? '';
+        const end   = daily[daily.length - 1]?.date ?? '';
+        document.getElementById('tradeChartStart').value = fmtDate(start);
+        document.getElementById('tradeChartEnd').value   = fmtDate(end);
+        renderTradeChart(daily, trades, start, end);
+    }
+
+    function renderTradeChart(daily, trades, startStr, endStr) {
+        destroyChart('tradeChart');
+        _tradeChartCtx = { daily, trades };
+
+        const inputStart = document.getElementById('tradeChartStart')?.value;
+        const inputEnd   = document.getElementById('tradeChartEnd')?.value;
+        if (!startStr && inputStart && inputEnd) {
+            startStr = inputStart.replace(/-/g, '');
+            endStr   = inputEnd.replace(/-/g, '');
+        } else if (!startStr || !endStr) {
+            const today  = new Date();
+            const sixAgo = new Date(today);
+            sixAgo.setMonth(today.getMonth() - 6);
+            const fmt8 = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+            endStr   = fmt8(today);
+            startStr = fmt8(sixAgo);
+            document.getElementById('tradeChartStart').value = fmtDate(startStr);
+            document.getElementById('tradeChartEnd').value   = fmtDate(endStr);
+        }
+
+        const useOHLC = futuresOHLC && futuresOHLC.length > 0;
+
+        // ── 價格線資料 ──────────────────────────────────────────────────────
+        let priceData;
+        if (useOHLC) {
+            const filtered = futuresOHLC.filter(b =>
+                b.dt.slice(0, 8) >= startStr && b.dt.slice(0, 8) <= endStr
+            );
+            priceData = filtered.map(b => ({ x: parseDt(b.dt), y: b.c, isDay: b.session === 'day' }));
+        } else {
+            priceData = daily
+                .filter(d => d.date >= startStr && d.date <= endStr)
+                .map(d => ({ x: new Date(fmtDate(d.date)), y: d.index, isDay: true }));
+        }
+
+        // ── 進出場標記 ──────────────────────────────────────────────────────
+        const filteredTrades = trades.filter(t =>
+            t.open_date >= startStr && t.open_date <= endStr ||
+            t.date      >= startStr && t.date      <= endStr
+        );
+
+        const ohlcInRange = useOHLC
+            ? futuresOHLC.filter(b => b.dt.slice(0,8) >= startStr && b.dt.slice(0,8) <= endStr)
+            : [];
+
+        const entryData = filteredTrades.map(t => ({
+            x: useOHLC ? findMarkerTime(ohlcInRange, t.open_date, t.open_price)
+                       : new Date(fmtDate(t.open_date)),
+            y: t.open_price,
+        }));
+        const exitData = filteredTrades.map(t => ({
+            x: useOHLC ? findMarkerTime(ohlcInRange, t.date, t.close_price)
+                       : new Date(fmtDate(t.date)),
+            y: t.close_price,
+        }));
+        const entryColors = filteredTrades.map(t =>
+            t.direction === '多' ? 'rgba(34,197,94,0.9)' : 'rgba(251,146,60,0.9)');
+        const exitColors  = filteredTrades.map(t =>
+            t.raw_pnl > 0 ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)');
+
+        const axisColor = tickColor();
+        const gridCol   = gridColor();
+
+        // 價格線：有 OHLC 時藍(日盤) / 紫(夜盤) 分色
+        const priceDataset = {
+            label: useOHLC ? '台指期（日/夜盤）' : '台指期（日線）',
+            type: 'line',
+            data: priceData,
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0,
+            order: 3,
+            yAxisID: 'y',
+        };
+        if (useOHLC) {
+            priceDataset.segment = {
+                borderColor: ctx => priceData[ctx.p0DataIndex]?.isDay
+                    ? 'rgba(59,130,246,0.65)'   // 藍 = 日盤
+                    : 'rgba(139,92,246,0.65)',  // 紫 = 夜盤
+            };
+        } else {
+            priceDataset.borderColor = 'rgba(99,102,241,0.45)';
+        }
+
+        const ctx = document.getElementById('tradeChart').getContext('2d');
+        charts['tradeChart'] = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    priceDataset,
+                    {
+                        label: '進場',
+                        type: 'scatter',
+                        data: entryData,
+                        backgroundColor: entryColors,
+                        borderColor: entryColors,
+                        pointStyle: 'triangle',
+                        pointRadius: 7,
+                        order: 1,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: '出場',
+                        type: 'scatter',
+                        data: exitData,
+                        backgroundColor: exitColors,
+                        borderColor: exitColors,
+                        pointStyle: 'circle',
+                        pointRadius: 5,
+                        order: 2,
+                        yAxisID: 'y',
+                    },
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                interaction: { mode: 'nearest', axis: 'xy', intersect: true },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            tooltipFormat: useOHLC ? 'yyyy-MM-dd（日盤/夜盤）' : 'yyyy-MM-dd',
+                            displayFormats: { day: 'M/d', month: 'yyyy/M', year: 'yyyy' },
+                        },
+                        ticks: { color: axisColor, maxTicksLimit: 10, source: 'auto' },
+                        grid:  { color: gridCol },
+                    },
+                    y: {
+                        ticks: { color: axisColor },
+                        grid:  { color: gridCol },
+                    },
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { color: axisColor, padding: 16, font: { size: 11 } },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label(ctx) {
+                                if (ctx.datasetIndex === 0) {
+                                    const pt = ctx.raw;
+                                    const sess = useOHLC ? (pt.isDay ? '日盤' : '夜盤') : '';
+                                    return ` 台指期${sess ? ` ${sess}` : ''} ${pt.y.toLocaleString()}`;
+                                }
+                                const t = filteredTrades[ctx.dataIndex];
+                                if (!t) return '';
+                                if (ctx.datasetIndex === 1) {
+                                    const dir = t.direction === '多' ? '▲ 多' : '▼ 空';
+                                    return ` ${dir} 進場 ${t.open_price.toLocaleString()}  ${fmtDate(t.open_date)}`;
+                                }
+                                const sign = t.raw_pnl >= 0 ? '+' : '';
+                                return ` 出場 ${t.close_price.toLocaleString()}  ${fmtDate(t.date)}  ${sign}${t.raw_pnl} 點`;
+                            }
+                        }
+                    },
+                    zoom: {
+                        zoom: {
+                            wheel: { enabled: true, speed: 0.1 },
+                            pinch: { enabled: true },
+                            mode: 'x',
+                        },
+                        pan: { enabled: true, mode: 'x' },
+                        limits: { x: { min: 'original', max: 'original' } },
+                    },
+                }
+            }
+        });
+    }
+
+    function resetTradeChartZoom() {
+        if (charts['tradeChart']) charts['tradeChart'].resetZoom();
     }
 
     function renderCumPnl(daily) {
@@ -919,6 +1171,19 @@
         renderTable();
         document.getElementById('tradeTableBody').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
+
+    // ── 台指期 OHLC 背景載入 ────────────────────────────────────────────────
+    fetch('futures_ohlc.json')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+            if (!data) return;
+            futuresOHLC = data;
+            // 若交易點位圖已渲染（用每日資料），立即升級成 OHLC 版本
+            if (_tradeChartCtx) {
+                renderTradeChart(_tradeChartCtx.daily, _tradeChartCtx.trades);
+            }
+        })
+        .catch(() => {});
 
     // ── 從比較表跳過來時自動載入 ───────────────────────────────────────────────
     window.addEventListener('load', () => {

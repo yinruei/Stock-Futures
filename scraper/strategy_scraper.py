@@ -113,7 +113,7 @@ def calc_stats(info: dict, daily_data: list) -> dict:
     daily_pnl = []
     trade_records = []
 
-    last_index = 0         # 最後一天的指數收盤（用於計算浮動損益）
+    last_index = 0         # 最後一天的台指期收盤（API day_entry[1]，用於計算浮動損益）
 
     for day_entry in daily_data:
         date_str  = day_entry[0]
