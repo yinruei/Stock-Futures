@@ -8,7 +8,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
@@ -721,6 +720,62 @@
         return new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(8,10)}:${s.slice(10,12)}:00+08:00`);
     }
 
+    // 自訂 K 棒繪製插件（不依賴 chartjs-chart-financial）
+    const candlestickPlugin = {
+        id: 'ohlcDraw',
+        afterDatasetsDraw(chart) {
+            const ds = chart.data.datasets.find(d => d._ohlcBars && d._ohlcBars.length);
+            if (!ds) return;
+            const bars = ds._ohlcBars;
+            const { ctx, chartArea, scales } = chart;
+            const xScale = scales.x, yScale = scales.y;
+            if (!xScale || !yScale || !chartArea) return;
+
+            // 計算 K 棒寬度（相鄰兩根間距的 65%，最小 2px，最大 18px）
+            let candleW = 4;
+            if (bars.length > 1) {
+                const x0 = xScale.getPixelForValue(parseDt(bars[0].dt));
+                const x1 = xScale.getPixelForValue(parseDt(bars[1].dt));
+                candleW = Math.max(2, Math.min(Math.abs(x1 - x0) * 0.65, 18));
+            }
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
+            ctx.clip();
+
+            bars.forEach(bar => {
+                const xPx = xScale.getPixelForValue(parseDt(bar.dt));
+                const oPx = yScale.getPixelForValue(bar.o);
+                const cPx = yScale.getPixelForValue(bar.c);
+                const hPx = yScale.getPixelForValue(bar.h);
+                const lPx = yScale.getPixelForValue(bar.l);
+
+                const isUp   = bar.c >= bar.o;
+                const fill   = isUp ? 'rgba(239,68,68,0.85)' : 'rgba(34,197,94,0.85)';  // 台灣：紅漲綠跌
+                const stroke = isUp ? 'rgb(220,38,38)'        : 'rgb(22,163,74)';
+
+                // 影線
+                ctx.beginPath();
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = 1;
+                ctx.moveTo(xPx, hPx);
+                ctx.lineTo(xPx, lPx);
+                ctx.stroke();
+
+                // 實體
+                const bodyTop = Math.min(oPx, cPx);
+                const bodyH   = Math.max(Math.abs(cPx - oPx), 1);
+                ctx.fillStyle = fill;
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = 0.5;
+                ctx.fillRect(xPx - candleW / 2, bodyTop, candleW, bodyH);
+                ctx.strokeRect(xPx - candleW / 2, bodyTop, candleW, bodyH);
+            });
+            ctx.restore();
+        }
+    };
+
     // 找 tradeDate 當天 close 最接近 price 的 OHLC bar → 傳回其 Date
     function findMarkerTime(ohlcBars, date8, price) {
         const dayBars = ohlcBars.filter(b => b.dt.startsWith(date8));
@@ -813,24 +868,19 @@
         const axisColor = tickColor();
         const gridCol   = gridColor();
 
-        // 價格資料集：有 OHLC 用 K 棒，否則用每日收盤線
+        // 價格資料集：有 OHLC 用自訂 K 棒（candlestickPlugin 繪製），否則用每日收盤線
         const priceDataset = useOHLC ? {
             label: '台指期 K棒',
-            type: 'candlestick',
+            type: 'scatter',
+            _ohlcBars: ohlcInRange,  // 供 candlestickPlugin 使用
             data: ohlcInRange.map(b => ({
                 x: parseDt(b.dt),
-                o: b.o, h: b.h, l: b.l, c: b.c,
+                y: b.c,
+                o: b.o, h: b.h, l: b.l, c: b.c, session: b.session,
             })),
-            color: {
-                up:        'rgba(239,68,68,0.9)',     // 台灣慣例：紅 = 漲
-                down:      'rgba(34,197,94,0.9)',     // 綠 = 跌
-                unchanged: 'rgba(156,163,175,0.75)',
-            },
-            borderColor: {
-                up:        'rgb(220,38,38)',
-                down:      'rgb(22,163,74)',
-                unchanged: 'rgb(107,114,128)',
-            },
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            showLine: false,
             order: 3,
             yAxisID: 'y',
         } : {
@@ -848,6 +898,7 @@
 
         const ctx = document.getElementById('tradeChart').getContext('2d');
         charts['tradeChart'] = new Chart(ctx, {
+            plugins: useOHLC ? [candlestickPlugin] : [],
             type: 'scatter',
             data: {
                 datasets: [
@@ -894,6 +945,10 @@
                     y: {
                         ticks: { color: axisColor },
                         grid:  { color: gridCol },
+                        ...(useOHLC && ohlcInRange.length ? {
+                            suggestedMin: Math.min(...ohlcInRange.map(b => b.l)) * 0.9995,
+                            suggestedMax: Math.max(...ohlcInRange.map(b => b.h)) * 1.0005,
+                        } : {}),
                     },
                 },
                 plugins: {
@@ -907,7 +962,7 @@
                                 if (ctx.datasetIndex === 0) {
                                     const r = ctx.raw;
                                     if (useOHLC && r.o != null) {
-                                        const sess = r.x?.getHours?.() < 15 ? '日盤' : '夜盤';
+                                        const sess = r.session === 'day' ? '日盤' : '夜盤';
                                         return [
                                             ` 台指期 ${sess}`,
                                             ` 開 ${r.o.toLocaleString()}  高 ${r.h.toLocaleString()}`,
