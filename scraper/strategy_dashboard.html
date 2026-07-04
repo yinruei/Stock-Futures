@@ -390,14 +390,8 @@
             const xScale = scales.x, yScale = scales.y;
             if (!xScale || !yScale || !chartArea) return;
 
-            // 快取解析後的 timestamp（避免每幀重複 new Date）
-            if (!chart._ohlcTs || chart._ohlcTs.length !== bars.length) {
-                chart._ohlcTs = bars.map(b => parseDt(b.dt).getTime());
-            }
-            const ts = chart._ohlcTs;
-
-            // 預算所有 x 像素（O(n) 線性換算，getPixelForValue 是常數時間）
-            const xPxArr = ts.map(t => xScale.getPixelForValue(t));
+            // X 軸改為線性索引，直接用 bar index 換算像素
+            const xPxArr = bars.map((_, i) => xScale.getPixelForValue(i));
 
             ctx.save();
             ctx.beginPath();
@@ -788,14 +782,21 @@
         return new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(8,10)}:${s.slice(10,12)}:00+08:00`);
     }
 
-    // 找 tradeDate 當天 close 最接近 price 的 OHLC bar → 傳回其 Date
-    function findMarkerTime(ohlcBars, date8, price) {
-        const dayBars = ohlcBars.filter(b => b.dt.startsWith(date8));
-        if (!dayBars.length) return new Date(fmtDate(date8) + 'T11:00:00+08:00');
-        const closest = dayBars.reduce((best, b) =>
-            Math.abs(b.c - price) < Math.abs(best.c - price) ? b : best
-        );
-        return parseDt(closest.dt);
+    // 找 tradeDate 當天 close 最接近 price 的 OHLC bar → 傳回其索引（供線性 X 軸定位）
+    function findMarkerIndex(ohlcBars, date8, price) {
+        const dayPairs = ohlcBars.map((b, i) => ({ b, i })).filter(({ b }) => b.dt.startsWith(date8));
+        if (!dayPairs.length) {
+            // 日期不在範圍內（例如交易跨越邊界）→ 找最近的交易日
+            let bestI = 0, bestDiff = Infinity;
+            ohlcBars.forEach((b, i) => {
+                const diff = Math.abs(parseInt(b.dt.slice(0, 8)) - parseInt(date8));
+                if (diff < bestDiff) { bestDiff = diff; bestI = i; }
+            });
+            return bestI;
+        }
+        return dayPairs.reduce((best, cur) =>
+            Math.abs(cur.b.c - price) < Math.abs(best.b.c - price) ? cur : best
+        ).i;
     }
 
     function applyTradeChartRange() {
@@ -863,12 +864,12 @@
             : [];
 
         const entryData = filteredTrades.map(t => ({
-            x: useOHLC ? findMarkerTime(ohlcInRange, t.open_date, t.open_price)
+            x: useOHLC ? findMarkerIndex(ohlcInRange, t.open_date, t.open_price)
                        : new Date(fmtDate(t.open_date)),
             y: t.open_price,
         }));
         const exitData = filteredTrades.map(t => ({
-            x: useOHLC ? findMarkerTime(ohlcInRange, t.date, t.close_price)
+            x: useOHLC ? findMarkerIndex(ohlcInRange, t.date, t.close_price)
                        : new Date(fmtDate(t.date)),
             y: t.close_price,
         }));
@@ -886,7 +887,7 @@
         const priceDataset = useOHLC ? {
             label: '台指期 K棒',
             type: 'scatter',
-            data: ohlcInRange.map(b => ({ x: parseDt(b.dt), y: b.c, _bar: b })),
+            data: ohlcInRange.map((b, i) => ({ x: i, y: b.c, _bar: b })),
             pointRadius: 0,
             pointHoverRadius: 0,
             order: 4,
@@ -940,10 +941,25 @@
                 animation: false,
                 interaction: { mode: 'nearest', axis: 'xy', intersect: true },
                 scales: {
-                    x: {
+                    x: useOHLC ? {
+                        type: 'linear',
+                        min: 0,
+                        max: ohlcInRange.length - 1,
+                        ticks: {
+                            color: axisColor,
+                            maxTicksLimit: 10,
+                            callback(val) {
+                                const b = ohlcInRange[Math.round(val)];
+                                if (!b) return '';
+                                const dt = String(b.dt);
+                                return `${dt.slice(4,6)}/${dt.slice(6,8)}`;
+                            },
+                        },
+                        grid: { color: gridCol },
+                    } : {
                         type: 'time',
                         time: {
-                            tooltipFormat: useOHLC ? 'yyyy-MM-dd（日盤/夜盤）' : 'yyyy-MM-dd',
+                            tooltipFormat: 'yyyy-MM-dd',
                             displayFormats: { day: 'M/d', month: 'yyyy/M', year: 'yyyy' },
                         },
                         ticks: { color: axisColor, maxTicksLimit: 10, source: 'auto' },
@@ -967,6 +983,22 @@
                     },
                     tooltip: {
                         callbacks: {
+                            title(items) {
+                                if (!items.length || !useOHLC) return undefined;
+                                const item = items[0];
+                                if (item.datasetIndex === 0) {
+                                    const b = item.raw._bar;
+                                    if (!b) return '';
+                                    const dt = String(b.dt);
+                                    const sess = b.session === 'day' ? '日盤' : '夜盤';
+                                    return `${dt.slice(0,4)}/${dt.slice(4,6)}/${dt.slice(6,8)} ${sess}`;
+                                }
+                                const t = filteredTrades[item.dataIndex];
+                                if (!t) return '';
+                                return item.datasetIndex === 1
+                                    ? fmtDate(t.open_date)
+                                    : fmtDate(t.date);
+                            },
                             label(ctx) {
                                 if (ctx.datasetIndex === 0) {
                                     const b = ctx.raw._bar;
@@ -984,21 +1016,25 @@
                                 if (!t) return '';
                                 if (ctx.datasetIndex === 1) {
                                     const dir = t.direction === '多' ? '▲ 多' : '▼ 空';
-                                    return ` ${dir} 進場 ${t.open_price.toLocaleString()}  ${fmtDate(t.open_date)}`;
+                                    return ` ${dir} 進場 ${t.open_price.toLocaleString()}`;
                                 }
                                 const sign = t.raw_pnl >= 0 ? '+' : '';
-                                return ` 出場 ${t.close_price.toLocaleString()}  ${fmtDate(t.date)}  ${sign}${t.raw_pnl} 點`;
+                                return ` 出場 ${t.close_price.toLocaleString()}  ${sign}${t.raw_pnl} 點`;
                             }
                         }
                     },
                     zoom: {
                         zoom: {
-                            wheel: { enabled: true, speed: 0.1 },
+                            wheel: { enabled: true, speed: 0.08 },
                             pinch: { enabled: true },
                             mode: 'x',
                         },
                         pan: { enabled: true, mode: 'x' },
-                        limits: { x: { min: 'original', max: 'original' } },
+                        ...(useOHLC ? {
+                            limits: { x: { min: 0, max: ohlcInRange.length - 1, minRange: 4 } },
+                        } : {
+                            limits: { x: { min: 'original', max: 'original' } },
+                        }),
                     },
                 }
             }
