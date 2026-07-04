@@ -119,6 +119,16 @@
     <!-- 最優指標快覽 -->
     <div id="topCards" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3"></div>
 
+    <!-- 波段篩選說明（套用日期篩選且含波段策略時顯示）-->
+    <div id="swingFilterNote" class="hidden items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+        <span class="shrink-0 text-sm">ℹ</span>
+        <span>
+            <strong>波段策略</strong>的區間數據為<strong>歷史切片</strong>，官網篩選是重新計算（冷啟動），結果會有差異。
+            如需與官網一致的精確數據，請執行：
+            <code id="swingNoteCmd" class="ml-1 bg-blue-100 rounded px-1 font-mono select-all"></code>
+        </span>
+    </div>
+
     <!-- 圖表區：雷達 + 條形 -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div class="bg-white rounded-xl shadow-md p-5">
@@ -211,6 +221,7 @@
         const tab = document.getElementById('tab' + cat);
         if (tab) tab.classList.add('tab-active');
         rebuildAllData();
+        updateSwingNote();
     }
 
     function rebuildAllData() {
@@ -311,6 +322,19 @@
         filterEndStr   = fe.replace(/-/g, '');
         document.getElementById('dateRangeLabel').textContent = `篩選範圍：${fs} ～ ${fe}`;
         rebuildAllData();
+        updateSwingNote(fs, fe);
+    }
+
+    function updateSwingNote(fs, fe) {
+        const note = document.getElementById('swingFilterNote');
+        const hasSwing = filterStartStr && filterEndStr && categoryFilter !== '組合';
+        if (hasSwing) {
+            document.getElementById('swingNoteCmd').textContent =
+                `python batch_scrape.py --begin ${fs || filterStartStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')} --end ${fe || filterEndStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')}`;
+            note.classList.remove('hidden'); note.classList.add('flex');
+        } else {
+            note.classList.add('hidden'); note.classList.remove('flex');
+        }
     }
 
     // ── IBFF NOPRW 評分 ────────────────────────────────────────────────────
@@ -426,6 +450,7 @@
         if (!fullRawData.length) return;
         filterStartStr = '';
         filterEndStr   = '';
+        updateSwingNote();
         const dates = fullRawData.flatMap(d => (d.daily_pnl || []).map(p => p.date));
         if (dates.length) {
             const minD = dates.reduce((a,b) => a<b?a:b);

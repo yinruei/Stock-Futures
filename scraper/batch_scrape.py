@@ -1,7 +1,11 @@
 """
 IBFF 策略批次爬蟲
-用法：python batch_scrape.py [開始日期 YYYY-MM-DD] [結束日期 YYYY-MM-DD]
-範例：python batch_scrape.py 2025-07-01
+用法：
+  python batch_scrape.py                              快速更新（2025-07-01 至今）
+  python batch_scrape.py --full                       完整歷史（2020-01-01 至今），供前端切片
+  python batch_scrape.py --begin 2025-01-02           指定起始至今
+  python batch_scrape.py --begin 2025-01-02 --end 2026-07-02  指定區間（結果與官網篩選一致）
+  python batch_scrape.py 2025-01-02 2026-07-02        舊格式（位置式參數，向下相容）
 """
 
 import os
@@ -168,15 +172,25 @@ def print_comparison(results):
 
 
 if __name__ == "__main__":
-    # --full 模式：爬取全部歷史（2024-01-01 至今），供前端日期篩選用
-    full_mode = "--full" in sys.argv
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    def _get_flag(flag):
+        try:
+            i = sys.argv.index(flag)
+            return sys.argv[i + 1]
+        except (ValueError, IndexError):
+            return None
 
-    end_date   = date.fromisoformat(args[1]) if len(args) > 1 else date.today()
-    begin_date = date.fromisoformat(args[0]) if len(args) > 0 else (
-        date(2020, 1, 1) if full_mode else date(2025, 7, 1)
-    )
+    full_mode  = "--full" in sys.argv
+    begin_arg  = _get_flag("--begin")
+    end_arg    = _get_flag("--end")
+    pos_args   = [a for a in sys.argv[1:] if not a.startswith("-")]
+
+    end_date   = date.fromisoformat(end_arg   or (pos_args[1] if len(pos_args) > 1 else str(date.today())))
+    begin_date = date.fromisoformat(begin_arg or (pos_args[0] if len(pos_args) > 0 else
+                     str(date(2020, 1, 1) if full_mode else date(2025, 7, 1))))
+
     print(f"批次爬取：{begin_date} ～ {end_date}，共 {len(STRATEGIES)} 個策略")
-    if full_mode:
-        print("（完整歷史模式：前端可自由篩選日期範圍）")
+    if begin_arg or end_arg:
+        print("（指定區間模式：結果與官網同日期篩選一致）")
+    elif full_mode:
+        print("（完整歷史模式：前端可自由切片，但波段策略篩選結果與官網重算有差異）")
     scrape_all(begin_date, end_date)
