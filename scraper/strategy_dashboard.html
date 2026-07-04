@@ -390,48 +390,55 @@
             const xScale = scales.x, yScale = scales.y;
             if (!xScale || !yScale || !chartArea) return;
 
-            // 計算 K 棒寬度（根據相鄰兩根的像素距離，自動隨縮放調整）
-            let barW = 3;
-            if (bars.length >= 2) {
-                const p0 = xScale.getPixelForValue(parseDt(bars[0].dt));
-                const p1 = xScale.getPixelForValue(parseDt(bars[1].dt));
-                barW = Math.max(1, Math.abs(p1 - p0) * 0.65);
+            // 快取解析後的 timestamp（避免每幀重複 new Date）
+            if (!chart._ohlcTs || chart._ohlcTs.length !== bars.length) {
+                chart._ohlcTs = bars.map(b => parseDt(b.dt).getTime());
             }
-            const halfW = barW / 2;
+            const ts = chart._ohlcTs;
+
+            // 預算所有 x 像素（O(n) 線性換算，getPixelForValue 是常數時間）
+            const xPxArr = ts.map(t => xScale.getPixelForValue(t));
 
             ctx.save();
             ctx.beginPath();
             ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
             ctx.clip();
 
-            for (const b of bars) {
-                const xPx = xScale.getPixelForValue(parseDt(b.dt));
-                // 視口外跳過（加 barW buffer 避免裁切邊緣）
-                if (xPx < chartArea.left - barW || xPx > chartArea.right + barW) continue;
+            for (let i = 0; i < bars.length; i++) {
+                const xPx = xPxArr[i];
+                if (xPx < chartArea.left - 50 || xPx > chartArea.right + 50) continue;
 
+                // 逐根計算寬度：取左右鄰居中最小間距的 80%
+                const leftGap  = i > 0               ? Math.abs(xPx - xPxArr[i - 1]) : Infinity;
+                const rightGap = i < bars.length - 1 ? Math.abs(xPxArr[i + 1] - xPx) : Infinity;
+                const gap  = isFinite(Math.min(leftGap, rightGap)) ? Math.min(leftGap, rightGap) : 4;
+                const barW = Math.max(1, gap * 0.8);
+
+                const b   = bars[i];
                 const hPx = yScale.getPixelForValue(b.h);
                 const lPx = yScale.getPixelForValue(b.l);
                 const oPx = yScale.getPixelForValue(b.o);
                 const cPx = yScale.getPixelForValue(b.c);
 
-                const isUp    = b.c >= b.o;
-                const color   = isUp ? 'rgb(220,38,38)' : 'rgb(22,163,74)';  // 紅漲綠跌
-                const bodyTop = Math.min(oPx, cPx);
-                const bodyBot = Math.max(oPx, cPx);
-                const bodyH   = Math.max(1, bodyBot - bodyTop);
+                const isUp  = b.c >= b.o;
+                const color = isUp ? 'rgb(220,38,38)' : 'rgb(22,163,74)';  // 紅漲綠跌
 
                 ctx.strokeStyle = color;
                 ctx.fillStyle   = color;
                 ctx.lineWidth   = 1;
 
-                // 影線（一整根從 high 到 low）
+                // 影線（high → low）
                 ctx.beginPath();
                 ctx.moveTo(xPx, hPx);
                 ctx.lineTo(xPx, lPx);
                 ctx.stroke();
 
-                // 實體
-                ctx.fillRect(xPx - halfW, bodyTop, barW, bodyH);
+                // 實體（寬度 >= 2px 才畫，否則只剩影線）
+                if (barW >= 2) {
+                    const bodyTop = Math.min(oPx, cPx);
+                    const bodyH   = Math.max(1, Math.max(oPx, cPx) - bodyTop);
+                    ctx.fillRect(xPx - barW / 2, bodyTop, barW, bodyH);
+                }
             }
 
             ctx.restore();
