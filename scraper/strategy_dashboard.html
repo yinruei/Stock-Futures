@@ -928,12 +928,13 @@
         try {
             const d = JSON.parse(raw);
             renderDashboard(d);
-            // 清掉 URL 中的 _t 參數，保持網址整潔
-            history.replaceState(null, '', 'strategy_dashboard.html?from=compare');
-            const btn = document.getElementById('backToCompareBtn');
-            btn.textContent = '← 返回比較表';
-            btn.onclick = () => history.back();
-            btn.classList.remove('hidden');
+            // 在 iframe 裡時不顯示返回按鈕（比較表蓋層本身有返回按鈕）
+            if (window === window.top) {
+                const btn = document.getElementById('backToCompareBtn');
+                btn.textContent = '← 返回比較表';
+                btn.onclick = () => history.back();
+                btn.classList.remove('hidden');
+            }
         } catch(e) {}
     });
 </script>
