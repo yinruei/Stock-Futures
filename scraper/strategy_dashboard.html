@@ -721,22 +721,28 @@
     }
 
     // 自訂 K 棒繪製插件（不依賴 chartjs-chart-financial）
+    // 使用 chart.getDatasetMeta(0).data[i].x 取得 Chart.js 已計算好的像素 x 座標
+    // 避免直接呼叫 xScale.getPixelForValue(Date) 的時區轉換問題
     const candlestickPlugin = {
         id: 'ohlcDraw',
         afterDatasetsDraw(chart) {
-            const ds = chart.data.datasets.find(d => d._ohlcBars && d._ohlcBars.length);
-            if (!ds) return;
-            const bars = ds._ohlcBars;
-            const { ctx, chartArea, scales } = chart;
-            const xScale = scales.x, yScale = scales.y;
-            if (!xScale || !yScale || !chartArea) return;
+            const dsIdx = 0;
+            const ds = chart.data.datasets[dsIdx];
+            // 只有資料點含 o/h/l/c 欄位時才繪製
+            if (!ds || !ds.data.length || ds.data[0].o == null) return;
 
-            // 計算 K 棒寬度（相鄰兩根間距的 65%，最小 2px，最大 18px）
+            const meta = chart.getDatasetMeta(dsIdx);
+            if (!meta || !meta.data.length) return;
+
+            const { ctx, chartArea, scales: { y: yScale } } = chart;
+            if (!yScale || !chartArea) return;
+
+            // K 棒寬度：相鄰兩個元素的像素間距 × 65%，最小 2px，最大 18px
             let candleW = 4;
-            if (bars.length > 1) {
-                const x0 = xScale.getPixelForValue(parseDt(bars[0].dt));
-                const x1 = xScale.getPixelForValue(parseDt(bars[1].dt));
-                candleW = Math.max(2, Math.min(Math.abs(x1 - x0) * 0.65, 18));
+            if (meta.data.length > 1) {
+                candleW = Math.max(2, Math.min(
+                    Math.abs(meta.data[1].x - meta.data[0].x) * 0.65, 18
+                ));
             }
 
             ctx.save();
@@ -744,8 +750,11 @@
             ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
             ctx.clip();
 
-            bars.forEach(bar => {
-                const xPx = xScale.getPixelForValue(parseDt(bar.dt));
+            meta.data.forEach((element, i) => {
+                const bar = ds.data[i];
+                if (!bar || bar.o == null) return;
+
+                const xPx = element.x;                       // Chart.js 已算好的像素 x
                 const oPx = yScale.getPixelForValue(bar.o);
                 const cPx = yScale.getPixelForValue(bar.c);
                 const hPx = yScale.getPixelForValue(bar.h);
@@ -755,7 +764,7 @@
                 const fill   = isUp ? 'rgba(239,68,68,0.85)' : 'rgba(34,197,94,0.85)';  // 台灣：紅漲綠跌
                 const stroke = isUp ? 'rgb(220,38,38)'        : 'rgb(22,163,74)';
 
-                // 影線
+                // 影線（高低）
                 ctx.beginPath();
                 ctx.strokeStyle = stroke;
                 ctx.lineWidth = 1;
@@ -763,7 +772,7 @@
                 ctx.lineTo(xPx, lPx);
                 ctx.stroke();
 
-                // 實體
+                // 實體（開收）
                 const bodyTop = Math.min(oPx, cPx);
                 const bodyH   = Math.max(Math.abs(cPx - oPx), 1);
                 ctx.fillStyle = fill;
@@ -868,19 +877,21 @@
         const axisColor = tickColor();
         const gridCol   = gridColor();
 
-        // 價格資料集：有 OHLC 用自訂 K 棒（candlestickPlugin 繪製），否則用每日收盤線
+        // 價格資料集：有 OHLC 用 line（y=收盤），candlestickPlugin 再畫 K 棒覆蓋
+        // 用 line 而非 scatter，確保 Chart.js 正確計算 meta 像素座標供插件使用
         const priceDataset = useOHLC ? {
             label: '台指期 K棒',
-            type: 'scatter',
-            _ohlcBars: ohlcInRange,  // 供 candlestickPlugin 使用
+            type: 'line',
             data: ohlcInRange.map(b => ({
                 x: parseDt(b.dt),
                 y: b.c,
                 o: b.o, h: b.h, l: b.l, c: b.c, session: b.session,
             })),
+            borderColor: 'rgba(99,102,241,0)',   // 透明折線，只作為 Y 軸定錨
+            backgroundColor: 'transparent',
+            borderWidth: 0,
             pointRadius: 0,
-            pointHoverRadius: 0,
-            showLine: false,
+            tension: 0,
             order: 3,
             yAxisID: 'y',
         } : {
@@ -945,10 +956,12 @@
                     y: {
                         ticks: { color: axisColor },
                         grid:  { color: gridCol },
-                        ...(useOHLC && ohlcInRange.length ? {
-                            suggestedMin: Math.min(...ohlcInRange.map(b => b.l)) * 0.9995,
-                            suggestedMax: Math.max(...ohlcInRange.map(b => b.h)) * 1.0005,
-                        } : {}),
+                        ...(useOHLC && ohlcInRange.length ? (() => {
+                            const minL = ohlcInRange.reduce((m, b) => Math.min(m, b.l), Infinity);
+                            const maxH = ohlcInRange.reduce((m, b) => Math.max(m, b.h), -Infinity);
+                            const pad  = (maxH - minL) * 0.02;
+                            return { min: minL - pad, max: maxH + pad };
+                        })() : {}),
                     },
                 },
                 plugins: {
