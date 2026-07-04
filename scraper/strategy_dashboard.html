@@ -889,7 +889,7 @@
             type: 'scatter',
             data: ohlcInRange.map((b, i) => ({ x: i, y: b.c, _bar: b })),
             pointRadius: 0,
-            pointHoverRadius: 0,
+            pointHoverRadius: 5,
             order: 4,
             yAxisID: 'y',
         } : {
@@ -939,7 +939,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
-                interaction: { mode: 'nearest', axis: 'xy', intersect: true },
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
                 scales: {
                     x: useOHLC ? {
                         type: 'linear',
@@ -1031,7 +1031,7 @@
                         },
                         pan: { enabled: true, mode: 'x' },
                         ...(useOHLC ? {
-                            limits: { x: { min: 0, max: ohlcInRange.length - 1, minRange: 4 } },
+                            limits: { x: { min: 0, max: ohlcInRange.length - 1, minRange: 2 } },
                         } : {
                             limits: { x: { min: 'original', max: 'original' } },
                         }),
@@ -1041,6 +1041,57 @@
         });
         // 讓插件 ohlcDraw 能讀取 OHLC 資料
         if (useOHLC) charts['tradeChart']._ohlcBars = ohlcInRange;
+
+        // ── 十字游標 ──────────────────────────────────────────────────────────
+        const mainCanvas = document.getElementById('tradeChart');
+        const chartContainer = mainCanvas.parentElement;  // .relative div
+
+        // 清除舊的十字游標 canvas（重新渲染時）
+        const oldCh = chartContainer.querySelector('.ohlc-crosshair');
+        if (oldCh) oldCh.remove();
+
+        const chCanvas = document.createElement('canvas');
+        chCanvas.className = 'ohlc-crosshair';
+        chCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+        chCanvas.width  = mainCanvas.clientWidth  || mainCanvas.offsetWidth;
+        chCanvas.height = mainCanvas.clientHeight || mainCanvas.offsetHeight;
+        chartContainer.appendChild(chCanvas);
+        const chCtx = chCanvas.getContext('2d');
+
+        const isDark = () => document.documentElement.classList.contains('dark');
+
+        mainCanvas.addEventListener('mousemove', function onMove(e) {
+            if (!charts['tradeChart']) return;
+            const { chartArea } = charts['tradeChart'];
+            const rect = mainCanvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            chCtx.clearRect(0, 0, chCanvas.width, chCanvas.height);
+            if (mx < chartArea.left || mx > chartArea.right ||
+                my < chartArea.top  || my > chartArea.bottom) return;
+
+            chCtx.save();
+            chCtx.strokeStyle = isDark() ? 'rgba(200,200,200,0.45)' : 'rgba(80,80,80,0.4)';
+            chCtx.lineWidth = 1;
+            chCtx.setLineDash([4, 4]);
+
+            chCtx.beginPath();
+            chCtx.moveTo(mx, chartArea.top);
+            chCtx.lineTo(mx, chartArea.bottom);
+            chCtx.stroke();
+
+            chCtx.beginPath();
+            chCtx.moveTo(chartArea.left, my);
+            chCtx.lineTo(chartArea.right, my);
+            chCtx.stroke();
+
+            chCtx.restore();
+        });
+
+        mainCanvas.addEventListener('mouseleave', function onLeave() {
+            chCtx.clearRect(0, 0, chCanvas.width, chCanvas.height);
+        });
     }
 
     function resetTradeChartZoom() {
