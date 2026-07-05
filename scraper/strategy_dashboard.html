@@ -255,14 +255,6 @@
     <div class="bg-white rounded-xl shadow-md p-6">
         <div class="flex flex-wrap items-center gap-3 mb-3 border-b pb-3">
             <h3 class="text-base font-bold text-gray-800">📍 交易點位圖</h3>
-            <div class="flex items-center gap-1.5 ml-auto text-xs text-gray-500 flex-wrap">
-                <span class="font-medium">進場</span>
-                <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-green-500 inline-block"></span>多</span>
-                <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-orange-400 inline-block"></span>空</span>
-                <span class="font-medium ml-2">出場</span>
-                <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>獲利</span>
-                <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>虧損</span>
-            </div>
         </div>
         <div class="flex gap-2 mb-3 items-center text-xs flex-wrap">
             <span class="text-gray-500">資料範圍：</span>
@@ -302,26 +294,22 @@
                 <span class="text-xs text-gray-400" id="tableCount"></span>
             </div>
         </div>
-        <div class="overflow-x-auto">
+        <div class="overflow-auto" style="max-height:420px">
             <table class="min-w-full text-sm text-right">
-                <thead class="bg-gray-50 text-gray-600 border-b text-xs">
+                <thead class="text-gray-600 text-xs">
                     <tr>
-                        <th class="p-3 text-left">#</th>
-                        <th class="p-3 text-left">日期</th>
-                        <th class="p-3 text-center">方向</th>
-                        <th class="p-3">開倉價</th>
-                        <th class="p-3">平倉價</th>
-                        <th class="p-3">原始損益（元）</th>
-                        <th class="p-3">淨損益（元，含成本）</th>
+                        <th class="p-3 text-left bg-gray-50 sticky top-0">#</th>
+                        <th class="p-3 text-left bg-gray-50 sticky top-0">進場日期</th>
+                        <th class="p-3 text-left bg-gray-50 sticky top-0">出場日期</th>
+                        <th class="p-3 text-center bg-gray-50 sticky top-0">方向</th>
+                        <th class="p-3 bg-gray-50 sticky top-0">進場價</th>
+                        <th class="p-3 bg-gray-50 sticky top-0">出場價</th>
+                        <th class="p-3 bg-gray-50 sticky top-0">損益（點）</th>
+                        <th class="p-3 bg-gray-50 sticky top-0">損益（元，扣成本）</th>
                     </tr>
                 </thead>
                 <tbody id="tradeTableBody" class="divide-y divide-gray-100"></tbody>
             </table>
-        </div>
-        <div class="flex justify-between items-center mt-4 pt-3 border-t">
-            <button onclick="changePage(-1)" id="prevBtn" class="px-4 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition disabled:opacity-40">← 上一頁</button>
-            <span class="text-sm text-gray-500" id="pageInfo">—</span>
-            <button onclick="changePage(1)" id="nextBtn" class="px-4 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition disabled:opacity-40">下一頁 →</button>
         </div>
     </div>
 
@@ -371,9 +359,7 @@
 
     // ── File Loading ──────────────────────────────────────────────────────
     let currentData = null;
-    let currentPage = 1;
     let currentTickValue = 1;   // 每點金額（TWD），載入後從商品資料取得
-    const PAGE_SIZE = 20;
     let charts = {};
     let futuresOHLC = null;  // 台指期日/夜盤 OHLC，由 futures_ohlc.json 載入
 
@@ -382,13 +368,31 @@
     // 用 xScale/yScale.getPixelForValue() 換算，縮放/平移後自動更新
     Chart.register({
         id: 'ohlcDraw',
-        afterDraw(chart) {
+        afterDatasetsDraw(chart) {
             const bars = chart._ohlcBars;
             if (!bars || !bars.length) return;
 
             const { ctx, chartArea, scales } = chart;
             const xScale = scales.x, yScale = scales.y;
             if (!xScale || !yScale || !chartArea) return;
+
+            // Y 軸自動調整：X 範圍改變時重算 Y 並排程一次 update
+            const xMin = xScale.min, xMax = xScale.max;
+            if (xMin !== chart._ohlcXMin || xMax !== chart._ohlcXMax) {
+                chart._ohlcXMin = xMin;
+                chart._ohlcXMax = xMax;
+                const lo = Math.max(0, Math.floor(xMin));
+                const hi = Math.min(bars.length - 1, Math.ceil(xMax));
+                const sl = bars.slice(lo, hi + 1);
+                if (sl.length) {
+                    const minL = sl.reduce((m, b) => Math.min(m, b.l), Infinity);
+                    const maxH = sl.reduce((m, b) => Math.max(m, b.h), -Infinity);
+                    const pad  = (maxH - minL) * 0.08;
+                    chart.options.scales.y.min = minL - pad;
+                    chart.options.scales.y.max = maxH + pad;
+                    requestAnimationFrame(() => { if (!chart.destroyed) chart.update('none'); });
+                }
+            }
 
             // X 軸改為線性索引，直接用 bar index 換算像素
             const xPxArr = bars.map((_, i) => xScale.getPixelForValue(i));
@@ -746,7 +750,6 @@
         gradeEl.className = 'text-xs font-bold mt-1 ' + gradeInfo.color;
 
         renderCharts(d);
-        currentPage = 1;
         renderTable();
     }
 
@@ -783,20 +786,6 @@
     }
 
     // 縮放/平移後，自動把 Y 軸收窄到可見 K 棒的 high/low 範圍
-    function fitYToVisible(chart, bars) {
-        const xScale = chart.scales.x;
-        const lo = Math.max(0, Math.floor(xScale.min));
-        const hi = Math.min(bars.length - 1, Math.ceil(xScale.max));
-        const slice = bars.slice(lo, hi + 1);
-        if (!slice.length) return;
-        const minL = slice.reduce((m, b) => Math.min(m, b.l), Infinity);
-        const maxH = slice.reduce((m, b) => Math.max(m, b.h), -Infinity);
-        const pad  = (maxH - minL) * 0.08;
-        chart.options.scales.y.min = minL - pad;
-        chart.options.scales.y.max = maxH + pad;
-        chart.update('none');
-    }
-
     // 將日/夜盤兩根合併成一根日 K（open=日盤開、high=兩盤最高、low=兩盤最低、close=夜盤收）
     function mergeToDaily(bars) {
         const map = new Map();
@@ -899,20 +888,20 @@
             ? mergeToDaily(futuresOHLC.filter(b => b.dt.slice(0,8) >= startStr && b.dt.slice(0,8) <= endStr))
             : [];
 
-        const entryData = filteredTrades.map(t => ({
+        const mkEntry = t => ({
             x: useOHLC ? findMarkerIndex(ohlcInRange, t.open_date, t.open_price)
                        : new Date(fmtDate(t.open_date)),
-            y: t.open_price,
-        }));
-        const exitData = filteredTrades.map(t => ({
+            y: t.open_price, _trade: t,
+        });
+        const mkExit = t => ({
             x: useOHLC ? findMarkerIndex(ohlcInRange, t.date, t.close_price)
                        : new Date(fmtDate(t.date)),
-            y: t.close_price,
-        }));
-        const entryColors = filteredTrades.map(t =>
-            t.direction === '多' ? 'rgba(34,197,94,0.9)' : 'rgba(251,146,60,0.9)');
-        const exitColors  = filteredTrades.map(t =>
-            t.raw_pnl > 0 ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)');
+            y: t.close_price, _trade: t,
+        });
+        const longEntryData  = filteredTrades.filter(t => t.direction === '多').map(mkEntry);
+        const shortEntryData = filteredTrades.filter(t => t.direction === '空').map(mkEntry);
+        const profitExitData = filteredTrades.filter(t => t.raw_pnl >= 0).map(mkExit);
+        const lossExitData   = filteredTrades.filter(t => t.raw_pnl <  0).map(mkExit);
 
         const axisColor = tickColor();
         const gridCol   = gridColor();
@@ -948,22 +937,45 @@
                 datasets: [
                     priceDataset,
                     {
-                        label: '進場',
+                        label: '進場 多',
                         type: 'scatter',
-                        data: entryData,
-                        backgroundColor: entryColors,
-                        borderColor: entryColors,
+                        data: longEntryData,
+                        backgroundColor: 'rgba(34,197,94,0.9)',
+                        borderColor: 'rgba(34,197,94,0.9)',
                         pointStyle: 'triangle',
                         pointRadius: 7,
                         order: 1,
                         yAxisID: 'y',
                     },
                     {
-                        label: '出場',
+                        label: '進場 空',
                         type: 'scatter',
-                        data: exitData,
-                        backgroundColor: exitColors,
-                        borderColor: exitColors,
+                        data: shortEntryData,
+                        backgroundColor: 'rgba(251,146,60,0.9)',
+                        borderColor: 'rgba(251,146,60,0.9)',
+                        pointStyle: 'triangle',
+                        rotation: 180,
+                        pointRadius: 7,
+                        order: 1,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: '出場 獲利',
+                        type: 'scatter',
+                        data: profitExitData,
+                        backgroundColor: 'rgba(34,197,94,0.85)',
+                        borderColor: 'rgba(34,197,94,0.85)',
+                        pointStyle: 'circle',
+                        pointRadius: 5,
+                        order: 2,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: '出場 虧損',
+                        type: 'scatter',
+                        data: lossExitData,
+                        backgroundColor: 'rgba(239,68,68,0.85)',
+                        borderColor: 'rgba(239,68,68,0.85)',
                         pointStyle: 'circle',
                         pointRadius: 5,
                         order: 2,
@@ -979,13 +991,15 @@
                 scales: {
                     x: useOHLC ? {
                         type: 'linear',
-                        min: 0,
+                        min: Math.max(0, ohlcInRange.length - 90),
                         max: ohlcInRange.length - 1,
                         ticks: {
+                            stepSize: 1,
                             color: axisColor,
                             maxTicksLimit: 10,
                             callback(val) {
-                                const b = ohlcInRange[Math.round(val)];
+                                if (!Number.isInteger(val)) return null;
+                                const b = ohlcInRange[val];
                                 if (!b) return '';
                                 const dt = String(b.dt);
                                 return `${dt.slice(4,6)}/${dt.slice(6,8)}`;
@@ -1009,9 +1023,15 @@
                 plugins: {
                     legend: {
                         position: 'top',
-                        labels: { color: axisColor, padding: 16, font: { size: 11 } },
+                        labels: {
+                            color: axisColor,
+                            padding: 16,
+                            font: { size: 11 },
+                            filter: item => item.text !== '台指期 K棒' && item.text !== '台指期（日線）',
+                        },
                     },
                     tooltip: {
+                        itemSort: (a, b) => a.datasetIndex - b.datasetIndex,
                         callbacks: {
                             title(items) {
                                 if (!items.length || !useOHLC) return undefined;
@@ -1022,28 +1042,30 @@
                                     const dt = String(b.dt);
                                     return `${dt.slice(0,4)}/${dt.slice(4,6)}/${dt.slice(6,8)}`;
                                 }
-                                const t = filteredTrades[item.dataIndex];
+                                const t = item.raw._trade;
                                 if (!t) return '';
-                                return item.datasetIndex === 1
-                                    ? fmtDate(t.open_date)
-                                    : fmtDate(t.date);
+                                return item.datasetIndex <= 2 ? fmtDate(t.open_date) : fmtDate(t.date);
+                            },
+                            labelColor(ctx) {
+                                if (ctx.datasetIndex === 0) return {
+                                    borderColor: 'transparent',
+                                    backgroundColor: 'transparent',
+                                };
                             },
                             label(ctx) {
                                 if (ctx.datasetIndex === 0) {
                                     const b = ctx.raw._bar;
                                     if (useOHLC && b) {
-                                        const sess = b.session === 'day' ? '日盤' : '夜盤';
                                         return [
-                                            ` 台指期 ${sess}`,
                                             ` 開 ${b.o.toLocaleString()}  高 ${b.h.toLocaleString()}`,
                                             ` 低 ${b.l.toLocaleString()}  收 ${b.c.toLocaleString()}`,
                                         ];
                                     }
-                                    return ` 台指期 ${ctx.raw.y?.toLocaleString?.() ?? ''}`;
+                                    return ` ${ctx.raw.y?.toLocaleString?.() ?? ''}`;
                                 }
-                                const t = filteredTrades[ctx.dataIndex];
+                                const t = ctx.raw._trade;
                                 if (!t) return '';
-                                if (ctx.datasetIndex === 1) {
+                                if (ctx.datasetIndex <= 2) {
                                     const dir = t.direction === '多' ? '▲ 多' : '▼ 空';
                                     return ` ${dir} 進場 ${t.open_price.toLocaleString()}`;
                                 }
@@ -1061,8 +1083,6 @@
                         pan: { enabled: true, mode: 'x' },
                         ...(useOHLC ? {
                             limits: { x: { min: 0, max: ohlcInRange.length - 1, minRange: 2 } },
-                            onZoomComplete: ({ chart }) => fitYToVisible(chart, ohlcInRange),
-                            onPanComplete:  ({ chart }) => fitYToVisible(chart, ohlcInRange),
                         } : {
                             limits: { x: { min: 'original', max: 'original' } },
                         }),
@@ -1070,13 +1090,9 @@
                 }
             }
         });
-        // 讓插件 ohlcDraw 能讀取 OHLC 資料
+        // 讓插件 ohlcDraw 能讀取 OHLC 資料（Y 軸自動調整由插件 afterDraw 處理）
         if (useOHLC) {
             charts['tradeChart']._ohlcBars = ohlcInRange;
-            // 初始渲染後立即調整 Y 軸到可見範圍
-            requestAnimationFrame(() => {
-                if (charts['tradeChart']) fitYToVisible(charts['tradeChart'], ohlcInRange);
-            });
         }
 
         // ── 十字游標 ──────────────────────────────────────────────────────────
@@ -1329,56 +1345,48 @@
     function renderTable() {
         const trades = getFilteredTrades();
         const total  = trades.length;
-        const pages  = Math.max(1, Math.ceil(total / PAGE_SIZE));
-        if (currentPage > pages) currentPage = pages;
-
-        const start = (currentPage - 1) * PAGE_SIZE;
-        const slice = trades.slice(start, start + PAGE_SIZE);
 
         document.getElementById('tableCount').textContent = `共 ${total} 筆`;
-        document.getElementById('pageInfo').textContent = `第 ${currentPage} / ${pages} 頁`;
-        document.getElementById('prevBtn').disabled = currentPage <= 1;
-        document.getElementById('nextBtn').disabled = currentPage >= pages;
 
         const tbody = document.getElementById('tradeTableBody');
         tbody.innerHTML = '';
 
+        if (total === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-gray-400">無符合條件的交易紀錄</td></tr>';
+            return;
+        }
+
         const tv = currentTickValue;
-        slice.forEach((t, i) => {
-            const idx = currentData.trades.length - (start + i);
+        const frag = document.createDocumentFragment();
+        trades.forEach((t, i) => {
+            const idx = currentData.trades.length - i;
             const isWin = t.net_pnl > 0;
-            const rawTWD = Math.round(t.raw_pnl * tv);
+            const rawPts = t.raw_pnl;
             const netTWD = Math.round(t.net_pnl * tv);
+            const ptsSign = rawPts >= 0 ? '+' : '';
+            const twdSign = netTWD >= 0 ? '+' : '';
             const tr = document.createElement('tr');
-            tr.className = 'hover:bg-gray-50 transition border-b border-gray-100';
+            tr.className = `transition border-b border-gray-100 ${isWin ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`;
             tr.innerHTML = `
                 <td class="p-3 text-left text-gray-400 text-xs">${idx}</td>
-                <td class="p-3 text-left font-medium text-gray-700">${fmtDate(t.date)}</td>
+                <td class="p-3 text-left text-gray-600 text-xs">${fmtDate(t.open_date)}</td>
+                <td class="p-3 text-left text-gray-600 text-xs">${fmtDate(t.date)}</td>
                 <td class="p-3 text-center">
-                    <span class="text-xs font-bold px-2 py-0.5 rounded ${t.direction === '多' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">
+                    <span class="text-xs font-bold px-2 py-0.5 rounded ${t.direction === '多' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'}">
                         ${t.direction}
                     </span>
                 </td>
-                <td class="p-3 text-gray-700">${t.open_price.toLocaleString()}</td>
-                <td class="p-3 text-gray-700">${t.close_price.toLocaleString()}</td>
-                <td class="p-3 ${rawTWD >= 0 ? 'text-green-600' : 'text-red-500'} font-medium">
-                    ${rawTWD >= 0 ? '+' : ''}${rawTWD.toLocaleString()}
+                <td class="p-3 text-gray-700 text-right">${t.open_price.toLocaleString()}</td>
+                <td class="p-3 text-gray-700 text-right">${t.close_price.toLocaleString()}</td>
+                <td class="p-3 text-right font-bold ${rawPts >= 0 ? 'text-green-700' : 'text-red-600'}">
+                    ${ptsSign}${rawPts.toLocaleString()}
                 </td>
-                <td class="p-3 ${isWin ? 'text-green-600' : 'text-red-500'} font-bold">
-                    ${netTWD >= 0 ? '+' : ''}${netTWD.toLocaleString()}
+                <td class="p-3 text-right ${isWin ? 'text-green-600' : 'text-red-500'}">
+                    ${twdSign}${netTWD.toLocaleString()}
                 </td>`;
-            tbody.appendChild(tr);
+            frag.appendChild(tr);
         });
-
-        if (slice.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-gray-400">無符合條件的交易紀錄</td></tr>';
-        }
-    }
-
-    function changePage(delta) {
-        currentPage += delta;
-        renderTable();
-        document.getElementById('tradeTableBody').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        tbody.appendChild(frag);
     }
 
     // ── 台指期 OHLC 背景載入 ────────────────────────────────────────────────
@@ -1401,6 +1409,7 @@
         if (!raw) return;
         try {
             const d = JSON.parse(raw);
+            currentData = d;
             renderDashboard(d);
             // 在 iframe 裡時不顯示返回按鈕（比較表蓋層本身有返回按鈕）
             if (window === window.top) {
