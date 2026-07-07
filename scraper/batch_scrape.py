@@ -195,7 +195,7 @@ if __name__ == "__main__":
 
     end_date   = date.fromisoformat(end_arg   or (pos_args[1] if len(pos_args) > 1 else str(date.today())))
     begin_date = date.fromisoformat(begin_arg or (pos_args[0] if len(pos_args) > 0 else
-                     str(date(2020, 1, 1) if full_mode else date(2025, 7, 1))))
+                     str(date(2020, 1, 1))))
 
     print(f"批次爬取：{begin_date} ～ {end_date}，共 {len(STRATEGIES)} 個策略")
     if begin_arg or end_arg:
