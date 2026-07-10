@@ -10,6 +10,8 @@ IBFF 策略批次爬蟲
 
 import os
 import sys
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
 import json
 import time
 from datetime import date
