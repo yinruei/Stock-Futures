@@ -57,7 +57,7 @@ STRATEGIES = [
     {"code": "OW01_tm",        "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "IBF_NKC_tm",     "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "OW03_tm",        "name": None, "subscribe_pts": 0, "category": "波段"},
-    {"code": "Sam_1219_tm",    "name": None, "subscribe_pts": 0, "category": "波段"},
+
     {"code": "OW06_tm",        "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "KW073_tm",       "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "IBF_LT42_tm",    "name": None, "subscribe_pts": 0, "category": "波段"},
