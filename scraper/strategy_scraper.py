@@ -64,9 +64,10 @@ def parse_info(info_arr: list) -> dict:
     # ── 從描述文字解析最大留倉口數，估算建議資金 ────────────────────────────────
     full_desc = " ".join(description_parts)
 
-    # 找描述中所有「數字+口」，取最大值即為最大同時留倉口數
+    # 找描述中所有「數字+口」或「最大執行倍數：N倍」，取最大值即為最大同時留倉口數
     lot_matches = re.findall(r'(\d+)\s*口', full_desc)
-    max_lots = max((int(x) for x in lot_matches), default=1)
+    bei_matches = re.findall(r'最大執行倍數[：:]\s*(\d+)\s*倍', full_desc)
+    max_lots = max((int(x) for x in lot_matches + bei_matches), default=1)
 
     # 保證金 = products[0].price（API 回傳的當下保證金）
     margin = next((p["price"] for p in products if p.get("tick_value") and p.get("price")), 31800)

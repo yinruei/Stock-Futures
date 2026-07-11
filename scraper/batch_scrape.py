@@ -36,7 +36,7 @@ STRATEGIES = [
     {"code": "W2262_tm",       "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "W2261_tm",       "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "moneycat13_tm",  "name": None, "subscribe_pts": 0, "category": "波段"},
-    {"code": "W1232_tm",       "name": None, "subscribe_pts": 0, "category": "波段"},
+    {"code": "W1232_tm",       "name": None, "subscribe_pts": 0, "category": "波段", "suggested_capital": 172100},
     {"code": "OW02_tm",        "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "IBF_R440_tm",    "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "OW05_tm",        "name": None, "subscribe_pts": 0, "category": "波段"},
@@ -98,6 +98,8 @@ def scrape_all(begin_date: date, end_date: date):
         try:
             raw     = fetch_strategy(code, begin_date, end_date)
             info    = parse_info(raw[0])
+            if s.get("suggested_capital"):
+                info["suggested_capital"] = s["suggested_capital"]
             stats   = calc_stats(info, raw[1])
             monthly = calc_monthly(stats["daily_pnl"])
 
