@@ -748,10 +748,18 @@
                     minD = dates.reduce((a,b) => a<b?a:b);
                     maxD = dates.reduce((a,b) => a>b?a:b);
                     const fmt = s => `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
-                    document.getElementById('filterStart').value = fmt(minD);
+                    // 預設顯示最近一年
+                    const oneYearAgo = new Date(
+                        `${maxD.slice(0,4)}-${maxD.slice(4,6)}-${maxD.slice(6,8)}`
+                    );
+                    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                    const defaultStart = oneYearAgo.toISOString().slice(0,10);
+                    document.getElementById('filterStart').value = defaultStart;
                     document.getElementById('filterEnd').value   = fmt(maxD);
+                    filterStartStr = defaultStart.replace(/-/g, '');
+                    filterEndStr   = maxD;
                     document.getElementById('dateRangeLabel').textContent =
-                        `全部資料（${fmt(minD)} ～ ${fmt(maxD)}）`;
+                        `篩選範圍：${defaultStart} ～ ${fmt(maxD)}`;
                 }
 
                 const dpg = document.getElementById('datePickerGroup');
