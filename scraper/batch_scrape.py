@@ -77,9 +77,9 @@ STRATEGIES = [
     {"code": "KW136_tm",       "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "IBF_PJM900_tm",  "name": None, "subscribe_pts": 0, "category": "波段"},
     {"code": "CQRF7_tm",       "name": None, "subscribe_pts": 0, "category": "波段"},
-    {"code": "W2052_tm",       "name": None, "subscribe_pts": 0, "category": "波段"},
-    {"code": "W2253_tm",       "name": None, "subscribe_pts": 0, "category": "波段"},
-    {"code": "PBOV290_SJ_tm",  "name": None, "subscribe_pts": 0, "category": "波段"},
+
+
+
 ]
 
 # 建議資金（TAIFEX_TMF 微型台指，來源：IBFF 網站登入後）
