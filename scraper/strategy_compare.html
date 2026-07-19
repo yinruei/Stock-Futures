@@ -67,6 +67,7 @@
                 <button onclick="setQuickFilter(3)"  id="qbtn3"  class="qbtn text-xs px-2.5 py-1.5 border rounded-lg transition hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-600">3M</button>
                 <button onclick="setQuickFilter(6)"  id="qbtn6"  class="qbtn text-xs px-2.5 py-1.5 border rounded-lg transition hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-600">6M</button>
                 <button onclick="setQuickFilter(12)" id="qbtn12" class="qbtn text-xs px-2.5 py-1.5 border rounded-lg transition bg-indigo-50 border-indigo-400 text-indigo-600 font-semibold">1Y</button>
+                <button onclick="setQuickFilter(16)" id="qbtn16" class="qbtn text-xs px-2.5 py-1.5 border rounded-lg transition hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-600">16M</button>
                 <span class="text-xs text-gray-300 mx-0.5">|</span>
                 <input type="date" id="filterStart"
                        class="text-xs border rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
@@ -331,7 +332,7 @@
         document.querySelectorAll('.qbtn').forEach(b => {
             b.classList.remove('bg-indigo-50', 'border-indigo-400', 'text-indigo-600', 'font-semibold');
         });
-        const map = {1:'qbtn1', 3:'qbtn3', 6:'qbtn6', 12:'qbtn12'};
+        const map = {1:'qbtn1', 3:'qbtn3', 6:'qbtn6', 12:'qbtn12', 16:'qbtn16'};
         const btn = document.getElementById(map[months]);
         if (btn) btn.classList.add('bg-indigo-50', 'border-indigo-400', 'text-indigo-600', 'font-semibold');
         applyFilter();
